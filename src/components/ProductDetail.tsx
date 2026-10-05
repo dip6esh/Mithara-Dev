@@ -38,6 +38,13 @@ function weightNumber(weight: string): string {
   return weight.replace(/[^0-9.]/g, "").trim();
 }
 
+/** Clean and phonetically adapt text for voice synthesis. */
+function cleanForSpeech(text: string): string {
+  return text
+    .replace(/\bRocher\b/gi, "Rosher")
+    .replace(/&/g, "and");
+}
+
 function buildItemSpeech(item: MenuItem): string {
   // Detect tiered pricing: "6pc/9pc/12pc/18pc - ₹700/₹975/₹1225/₹1800"
   const tieredMatch = item.price.match(/^(.+?)\s*-\s*(.+)$/);
@@ -53,12 +60,13 @@ function buildItemSpeech(item: MenuItem): string {
     priceSentence = `इसकी कीमत ${priceNumber(item.price)} रुपये है.`;
   }
 
-  let speech = `आपने ${item.name} पर क्लिक किया है. ${priceSentence}`;
+  const spokenName = cleanForSpeech(item.name);
+  let speech = `आपने ${spokenName} पर क्लिक किया है. ${priceSentence}`;
 
   if (item.topping && item.weight) {
-    speech += ` इसमें topping ${item.topping} का होता है, और इसका वज़न करीब ${weightNumber(item.weight)} ग्राम होता है.`;
+    speech += ` इसमें topping ${cleanForSpeech(item.topping)} का होता है, और इसका वज़न करीब ${weightNumber(item.weight)} ग्राम होता है.`;
   } else if (item.topping) {
-    speech += ` इसमें topping ${item.topping} का होता है.`;
+    speech += ` इसमें topping ${cleanForSpeech(item.topping)} का होता है.`;
   } else if (item.weight) {
     speech += ` इसका वज़न करीब ${weightNumber(item.weight)} ग्राम होता है.`;
   }

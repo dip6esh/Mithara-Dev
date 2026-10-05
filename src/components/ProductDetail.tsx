@@ -48,19 +48,19 @@ function buildItemSpeech(item: MenuItem): string {
     const amounts = tieredMatch[2].split("/").map((a) => a.trim().replace(/[₹,\s]/g, ""));
     const tiers = qtys.map((q, i) => `${q} पीस के लिए ${amounts[i]} रुपये`);
     const last = tiers.pop()!;
-    priceSentence = `यह ${tiers.join(", ")}, और ${last} में मिलता है।`;
+    priceSentence = `यह ${tiers.join(", ")}, और ${last} में मिलता है.`;
   } else {
-    priceSentence = `इसकी कीमत ${priceNumber(item.price)} रुपये है।`;
+    priceSentence = `इसकी कीमत ${priceNumber(item.price)} रुपये है.`;
   }
 
-  let speech = `आपने ${item.name} पर क्लिक किया है। ${priceSentence}`;
+  let speech = `आपने ${item.name} पर क्लिक किया है. ${priceSentence}`;
 
   if (item.topping && item.weight) {
-    speech += ` इसमें topping ${item.topping} का होता है और इसका वज़न करीब ${weightNumber(item.weight)} ग्राम होता है।`;
+    speech += ` इसमें topping ${item.topping} का होता है, और इसका वज़न करीब ${weightNumber(item.weight)} ग्राम होता है.`;
   } else if (item.topping) {
-    speech += ` इसमें topping ${item.topping} का होता है।`;
+    speech += ` इसमें topping ${item.topping} का होता है.`;
   } else if (item.weight) {
-    speech += ` इसका वज़न करीब ${weightNumber(item.weight)} ग्राम होता है।`;
+    speech += ` इसका वज़न करीब ${weightNumber(item.weight)} ग्राम होता है.`;
   }
 
   return speech;

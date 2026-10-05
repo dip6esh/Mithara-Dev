@@ -37,7 +37,9 @@ function pickVoice(): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices();
   if (!voices.length) return null;
   const preferred = [
-    // Indian English — highest priority
+    // Indian Hindi & English — highest priority
+    "Microsoft Swara Online (Natural) - Hindi (India)",
+    "Microsoft Madhur Online (Natural) - Hindi (India)",
     "Google हिन्दी",
     "Microsoft Heera - English (India)",
     "Microsoft Neerja Online (Natural) - English (India)",

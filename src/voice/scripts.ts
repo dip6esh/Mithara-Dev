@@ -6,7 +6,7 @@
  */
 
 export const WELCOME_INTRO = [
-  "Welcome to Mithara.",
+  "Welcome to मिठारा.",
   "A premium dessert house. Dessert by Desert People. Made for the sweet moments.",
   "You're on the home page — page 1 of 5.",
   "To move between pages, tap the right edge of the screen for the next page, or the left edge to go back. On a keyboard, press Alt and the left or right arrow key.",
@@ -20,9 +20,9 @@ export type MainRoute = (typeof MAIN_ROUTES)[number];
 export const PAGE_NARRATION: Record<string, string> = {
   "/": WELCOME_INTRO,
   "/kunafa":
-    "Kunafa page. Page 2 of 5. Golden, warm and irresistible. Twelve handcrafted varieties, from Cream and Cream Cheese to Biscoff, Nutella, Rabdi, and more.",
+    "कुनाफ़ा page. Page 2 of 5. Golden, warm and irresistible. Twelve handcrafted varieties, from Cream and Cream Cheese to Biscoff, Nutella, Rabdi, and more.",
   "/baklava":
-    "Baklava page. Page 3 of 5. Layer upon layer of indulgence. Ten handcrafted varieties, from Pistachio Square and Flower to Nutella Nest and Rose. Assorted boxes start at 750 rupees.",
+    "बक्लावा page. Page 3 of 5. Layer upon layer of indulgence. Ten handcrafted varieties, from Pistachio Square and Flower to Nutella Nest and Rose. Assorted boxes start at 750 rupees.",
   "/care": "Care and Enjoyment guide. Page 4 of 5.",
-  "/about": "About Mithara. Page 5 of 5.",
+  "/about": "About मिठारा. Page 5 of 5.",
 };

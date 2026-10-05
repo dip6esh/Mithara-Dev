@@ -37,19 +37,27 @@ function pickVoice(): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices();
   if (!voices.length) return null;
   const preferred = [
-    "Google UK English Female",
-    "Google US English",
+    // Indian English — highest priority
+    "Google हिन्दी",
+    "Microsoft Heera - English (India)",
+    "Microsoft Neerja Online (Natural) - English (India)",
+    "Google Indian English",
+    // Neutral US fallbacks
     "Microsoft Aria Online (Natural) - English (United States)",
     "Microsoft Jenny Online (Natural) - English (United States)",
+    "Google US English",
     "Samantha",
-    "Karen",
-    "Serena",
   ];
   for (const name of preferred) {
     const v = voices.find((x) => x.name === name);
     if (v) return v;
   }
-  return voices.find((v) => v.lang.toLowerCase().startsWith("en")) ?? voices[0];
+  // Prefer en-IN voices over any other English
+  return (
+    voices.find((v) => v.lang.toLowerCase() === "en-in") ??
+    voices.find((v) => v.lang.toLowerCase().startsWith("en")) ??
+    voices[0]
+  );
 }
 
 export function VoiceHostProvider({ children }: { children: ReactNode }) {
@@ -127,7 +135,7 @@ export function VoiceHostProvider({ children }: { children: ReactNode }) {
     u.rate = 0.95;
     u.pitch = 1;
     u.volume = 1;
-    u.lang = voiceRef.current?.lang ?? "en-US";
+    u.lang = voiceRef.current?.lang ?? "en-IN";
     u.onstart = () => setStatus("speaking");
     u.onend = () => setStatus("idle");
     u.onerror = () => setStatus("idle");
@@ -186,7 +194,7 @@ export function VoiceHostProvider({ children }: { children: ReactNode }) {
       u.rate = 0.95;
       u.pitch = 1;
       u.volume = 1;
-      u.lang = voiceRef.current?.lang ?? "en-US";
+      u.lang = voiceRef.current?.lang ?? "en-IN";
       u.onstart = () => setStatus("speaking");
       u.onend = () => setStatus("idle");
       u.onerror = () => setStatus("idle");

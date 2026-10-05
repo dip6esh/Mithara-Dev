@@ -9,25 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as KunafaRouteImport } from './routes/kunafa'
-import { Route as CareRouteImport } from './routes/care'
-import { Route as BaklavaRouteImport } from './routes/baklava'
-import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AboutRouteImport } from './routes/about'
+import { Route as BaklavaRouteImport } from './routes/baklava'
+import { Route as CareRouteImport } from './routes/care'
+import { Route as KunafaRouteImport } from './routes/kunafa'
 
-const KunafaRoute = KunafaRouteImport.update({
-  id: '/kunafa',
-  path: '/kunafa',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const CareRoute = CareRouteImport.update({
-  id: '/care',
-  path: '/care',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const BaklavaRoute = BaklavaRouteImport.update({
-  id: '/baklava',
-  path: '/baklava',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AboutRoute = AboutRouteImport.update({
@@ -35,9 +25,19 @@ const AboutRoute = AboutRouteImport.update({
   path: '/about',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const BaklavaRoute = BaklavaRouteImport.update({
+  id: '/baklava',
+  path: '/baklava',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CareRoute = CareRouteImport.update({
+  id: '/care',
+  path: '/care',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KunafaRoute = KunafaRouteImport.update({
+  id: '/kunafa',
+  path: '/kunafa',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -81,25 +81,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/kunafa': {
-      id: '/kunafa'
-      path: '/kunafa'
-      fullPath: '/kunafa'
-      preLoaderRoute: typeof KunafaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/care': {
-      id: '/care'
-      path: '/care'
-      fullPath: '/care'
-      preLoaderRoute: typeof CareRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/baklava': {
-      id: '/baklava'
-      path: '/baklava'
-      fullPath: '/baklava'
-      preLoaderRoute: typeof BaklavaRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/about': {
@@ -109,11 +95,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AboutRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/baklava': {
+      id: '/baklava'
+      path: '/baklava'
+      fullPath: '/baklava'
+      preLoaderRoute: typeof BaklavaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/care': {
+      id: '/care'
+      path: '/care'
+      fullPath: '/care'
+      preLoaderRoute: typeof CareRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kunafa': {
+      id: '/kunafa'
+      path: '/kunafa'
+      fullPath: '/kunafa'
+      preLoaderRoute: typeof KunafaRouteImport
       parentRoute: typeof rootRouteImport
     }
   }

@@ -26,10 +26,15 @@ function priceNumber(price: string): string {
   return price.replace(/[₹,/\-\s]/g, "").trim();
 }
 
-/** Extract only the numeric portion from a weight string.
+/** Convert a weight string to a speakable form.
  *  "200g" / "200 grams" → "200"
+ *  "165 grams - 175 grams" → "165 से 175"
  */
 function weightNumber(weight: string): string {
+  const rangeMatch = weight.match(/(\d+(?:\.\d+)?)\s*(?:grams?|g)?\s*[-–]\s*(\d+(?:\.\d+)?)/i);
+  if (rangeMatch) {
+    return `${rangeMatch[1]} से ${rangeMatch[2]}`;
+  }
   return weight.replace(/[^0-9.]/g, "").trim();
 }
 

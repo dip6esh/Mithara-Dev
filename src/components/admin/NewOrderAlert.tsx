@@ -1,0 +1,314 @@
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { Bell, BellOff, Phone, MapPin, ShoppingBag, Volume2, X } from "lucide-react";
+import { supabase } from "../../lib/supabase";
+import { formatINR } from "../../lib/enquiry";
+import { PAYMENT_TONE_CLASS, paymentSummary } from "../../lib/orderFlow";
+import {
+  isAudioBlocked,
+  playOrderChime,
+  setSoundEnabled,
+  startRinging,
+  stopRinging,
+  unlockAudio,
+  useSoundEnabled,
+} from "../../lib/orderSound";
+import type { Order } from "../../lib/types";
+
+/* ------------------------------------------------------------------ */
+/*  Shared state. Lives outside React because every admin page mounts   */
+/*  its own AdminLayout: this keeps the queue and the "already seen"    */
+/*  list alive while the admin navigates between pages.                 */
+/* ------------------------------------------------------------------ */
+const EMPTY: Order[] = [];
+let known: Set<string> | null = null;
+let queue: Order[] = EMPTY;
+const listeners = new Set<() => void>();
+const emit = () => listeners.forEach((l) => l());
+const subscribe = (l: () => void) => {
+  listeners.add(l);
+  return () => listeners.delete(l);
+};
+
+function dismissAll() {
+  queue = EMPTY;
+  stopRinging();
+  emit();
+}
+
+/** Looks for "Order received" orders we have not announced yet. The first run only records what exists. */
+async function checkForNewOrders() {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("*, order_items(*)")
+    .eq("status", "new")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error || !data) return;
+  const rows = data as Order[];
+  if (!known) {
+    known = new Set(rows.map((o) => o.id));
+    return;
+  }
+  const fresh = rows.filter((o) => !known!.has(o.id));
+  rows.forEach((o) => known!.add(o.id));
+  if (fresh.length > 0) {
+    queue = [...fresh, ...queue.filter((q) => !fresh.some((f) => f.id === q.id))];
+    emit();
+  }
+}
+
+function ago(iso: string): string {
+  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.round(s / 60);
+  return m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`;
+}
+
+function addressLine(o: Order): string {
+  const a = o.address_snapshot;
+  if (!a) return "";
+  return [a.flat, a.building, a.street, a.area, a.city, a.pincode].filter(Boolean).join(", ");
+}
+
+/** Bell button for the admin header: turns the new-order sound on or off (and plays a test ring). */
+export function OrderSoundToggle({ tone = "light" }: { tone?: "light" | "dark" }) {
+  const on = useSoundEnabled();
+  const Icon = on ? Bell : BellOff;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        unlockAudio();
+        const next = !on;
+        setSoundEnabled(next);
+        if (next) playOrderChime(); // test ring, also proves the browser allows sound
+      }}
+      aria-pressed={on}
+      title={on ? "New-order sound is on (click to mute)" : "New-order sound is muted (click to turn on)"}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium transition-colors sm:text-xs ${
+        tone === "dark"
+          ? "border-white/15 bg-white/10 text-white hover:bg-white/15"
+          : "border-border bg-card text-foreground hover:border-[#d39c54]"
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      <span className="hidden sm:inline">{on ? "Sound on" : "Muted"}</span>
+    </button>
+  );
+}
+
+/**
+ * Pop-up + repeating sound whenever a new order arrives, on every admin page.
+ * Detects orders through Supabase Realtime, with a 15 s poll as a fallback.
+ */
+export function NewOrderAlert() {
+  const navigate = useNavigate();
+  const orders = useSyncExternalStore(
+    subscribe,
+    () => queue,
+    () => EMPTY,
+  );
+  const soundOn = useSoundEnabled();
+  const [blocked, setBlocked] = useState(false);
+  const [, tick] = useState(0);
+  const count = orders.length;
+
+  // Detection
+  useEffect(() => {
+    void checkForNewOrders();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void checkForNewOrders(), 400);
+    };
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel(`admin-new-order-alert-${Math.random().toString(36).slice(2)}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" }, schedule)
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, schedule)
+        .subscribe();
+    } catch {
+      /* polling below still catches new orders */
+    }
+    const poll = setInterval(() => void checkForNewOrders(), 15_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void checkForNewOrders();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      if (timer) clearTimeout(timer);
+      clearInterval(poll);
+      document.removeEventListener("visibilitychange", onVisible);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Browsers need one click / tap before they allow sound: take the first one anywhere on the page.
+  useEffect(() => {
+    const unlock = () => unlockAudio();
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
+  // Ring a few times when new orders arrive, then go quiet (the popup stays until dismissed).
+  const batch = orders.map((o) => o.id).join(",");
+  useEffect(() => {
+    if (count > 0 && soundOn) startRinging(batch);
+    else stopRinging();
+  }, [count, soundOn, batch]);
+
+  // Tab title + "is sound blocked?" + live "x min ago" while the popup is open.
+  useEffect(() => {
+    if (count === 0) {
+      setBlocked(false);
+      return;
+    }
+    const original = document.title;
+    let flip = false;
+    const t = setInterval(() => {
+      flip = !flip;
+      document.title = flip ? `🔔 ${count} new order${count > 1 ? "s" : ""}!` : original;
+      setBlocked(isAudioBlocked());
+      tick((n) => n + 1);
+    }, 1000);
+    setBlocked(isAudioBlocked());
+    return () => {
+      clearInterval(t);
+      document.title = original;
+    };
+  }, [count]);
+
+  const viewOrders = useCallback(() => {
+    dismissAll();
+    navigate({ to: "/admin/orders" });
+  }, [navigate]);
+
+  if (count === 0) return null;
+
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="new-order-title"
+      className="adm-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-[#1c1733]/75 p-4 backdrop-blur-sm"
+      onPointerDown={unlockAudio}
+    >
+      <div className="adm-modal relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-900 text-neutral-200 shadow-2xl">
+        <div className="flex items-center gap-4 border-b border-neutral-800 p-5 pr-14">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-lg shadow-amber-500/30">
+            <Bell className="adm-bell h-6 w-6" aria-hidden="true" />
+          </div>
+          <div className="min-w-0">
+            <h2 id="new-order-title" className="font-serif text-xl font-bold text-neutral-100">
+              {count === 1 ? "New order received!" : `${count} new orders received!`}
+            </h2>
+            <p className="text-xs text-neutral-400">Open the order, confirm it and start baking.</p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissAll}
+            aria-label="Dismiss"
+            className="absolute top-5 right-5 rounded-lg p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {blocked && soundOn && (
+          <div className="flex items-center gap-2 border-b border-neutral-800 bg-neutral-950 px-5 py-2.5 text-xs text-neutral-200">
+            <Volume2 className="h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
+            <span>Your browser is blocking sound. Click anywhere on this window to hear the bell.</span>
+          </div>
+        )}
+
+        <ul className="flex-1 space-y-3 overflow-y-auto p-5">
+          {orders.map((o) => {
+            const pay = paymentSummary(o);
+            const addr = addressLine(o);
+            return (
+              <li key={o.id} className="rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-neutral-100">
+                      {o.order_number}
+                      <span className="ml-2 rounded-full border border-neutral-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                        {o.delivery_type}
+                      </span>
+                    </p>
+                    <p className="mt-0.5 text-xs text-neutral-400">{ago(o.created_at)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-serif text-xl font-bold tabular-nums text-neutral-100">{formatINR(o.total_inr)}</p>
+                    <span
+                      className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${PAYMENT_TONE_CLASS[pay.tone]}`}
+                    >
+                      {pay.label}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 space-y-1 text-xs text-neutral-300">
+                  <p className="flex items-center gap-1.5">
+                    <Phone className="h-3.5 w-3.5 shrink-0 text-neutral-400" aria-hidden="true" />
+                    {o.customer_name} · {o.customer_phone}
+                  </p>
+                  {o.delivery_type === "delivery" && addr && (
+                    <p className="flex items-start gap-1.5">
+                      <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-400" aria-hidden="true" />
+                      {addr}
+                    </p>
+                  )}
+                </div>
+
+                {o.order_items && o.order_items.length > 0 && (
+                  <ul className="mt-3 space-y-1 border-t border-dashed border-neutral-800 pt-3 text-sm">
+                    {o.order_items.map((it) => (
+                      <li key={it.id} className="flex justify-between gap-3">
+                        <span className="min-w-0 text-neutral-200">
+                          {it.name}
+                          {it.variant ? <span className="text-neutral-400"> · {it.variant}</span> : null}
+                          <span className="text-neutral-400"> × {it.qty}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums text-neutral-300">{formatINR(it.unit_price * it.qty)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {o.notes && (
+                  <p className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-neutral-900 px-3 py-2 text-xs text-neutral-300">
+                    Note: {o.notes}
+                  </p>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="flex flex-col-reverse gap-2 border-t border-neutral-800 p-5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={dismissAll}
+            className="rounded-xl border border-neutral-800 px-5 py-2.5 text-sm font-medium text-neutral-300 hover:border-amber-500/40 hover:text-neutral-100"
+          >
+            Dismiss
+          </button>
+          <button
+            type="button"
+            onClick={viewOrders}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-2.5 text-sm font-bold text-gold-foreground shadow-lg shadow-amber-500/20 hover:bg-amber-400"
+          >
+            <ShoppingBag className="h-4 w-4" aria-hidden="true" />
+            View orders
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -5,7 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { cacheGet, cacheSet, hasCache, useCachedState } from "../../lib/adminCache";
 import { Order, Product } from "../../lib/types";
 import { STATUS_LABEL, countsAsSale, paymentSummary } from "../../lib/orderFlow";
-import { useOrdersRealtime } from "../../hooks/useAdminOrders";
+import { useOrdersRealtime, useProductsRealtime } from "../../hooks/useAdminOrders";
 import {
   TrendingUp,
   TrendingDown,
@@ -125,6 +125,8 @@ function AdminDashboardPage() {
 
   // Live updates + a chime/toast when a new order arrives.
   useOrdersRealtime(() => fetchData(true));
+  // Menu edits (stock, availability) from another tab or device also refresh the stock cards.
+  useProductsRealtime(() => fetchData(true));
 
   const todayKey = localKey(new Date());
   // Sales = orders received or handed over (never abandoned online payments or cancelled orders).

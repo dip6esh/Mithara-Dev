@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { createFileRoute } from "@tanstack/react-router";
 import { supabase } from "../../lib/supabase";
 import { refreshDailyStock } from "../../lib/dailyStock";
+import { useProductsRealtime } from "../../hooks/useAdminOrders";
 import { cacheGet, cacheSet, hasCache, useCachedState } from "../../lib/adminCache";
 import { Product, ProductCategory, ProductStatus, ProductVariant } from "../../lib/types";
 import {
@@ -424,6 +425,9 @@ function AdminMenuPage() {
   useEffect(() => {
     fetchProducts(hasCache("admin:menu:products"));
   }, []);
+
+  // Stock changes the moment an order is placed (or the menu is edited elsewhere): show it without a refresh.
+  useProductsRealtime(() => fetchProducts(true));
 
   const openPrices = async () => {
     setShowPrices(true);

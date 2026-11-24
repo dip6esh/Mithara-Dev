@@ -21,6 +21,7 @@ import { unwrapSetting } from "../../lib/settings";
 import { AdminGuard } from "./AdminGuard";
 import { NewOrderAlert, OrderSoundToggle } from "./NewOrderAlert";
 import { LowStockWatcher } from "./LowStockAlert";
+import { NotificationBell, NotificationsWatcher } from "./NotificationCenter";
 import { toast } from "sonner";
 import logoText from "../../assets/mithara-logo.png";
 import logoIcon from "../../assets/mithara-icon.png";
@@ -54,6 +55,8 @@ const ALL_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
+  // The page on screen (changes only when the new page is ready), used to replay the entrance animation once.
+  const shownPath = useRouterState({ select: (s) => (s.resolvedLocation ?? s.location).pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [newOrdersCount, setNewOrdersCount] = useState<number>(0);
   const [holidayMode, setHolidayMode] = useState<boolean>(false);
@@ -185,6 +188,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             <img src={logoText} alt="Mithara" className="h-3.5 w-auto min-w-0 object-contain" />
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <NotificationBell tone="dark" />
             <OrderSoundToggle tone="dark" />
             {StorePill}
           </div>
@@ -337,6 +341,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               </span>
             </div>
             <div className="flex items-center gap-3">
+              <NotificationBell />
               <OrderSoundToggle />
               {StorePill}
               <Link
@@ -351,13 +356,14 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </header>
 
           <main className="mx-auto w-full max-w-[1400px] flex-1 p-3 pt-[calc(4rem+env(safe-area-inset-top)+0.75rem)] sm:p-4 sm:pt-[calc(4rem+env(safe-area-inset-top)+1rem)] lg:p-8 lg:pt-8">
-            <div key={currentPath} className="adm-page">
+            <div key={shownPath} className="adm-page">
               {children}
             </div>
           </main>
         </div>
         <NewOrderAlert />
         <LowStockWatcher />
+        <NotificationsWatcher />
       </div>
     </AdminGuard>
   );

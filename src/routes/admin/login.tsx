@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { supabase } from "../../lib/supabase";
-import { isAdminUser } from "../../lib/auth";
+import { isAdminUser, primeAuth } from "../../lib/auth";
 import { Lock, Mail, Loader2, ArrowLeft, ArrowRight, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import logoText from "../../assets/mithara-logo.png";
@@ -52,8 +52,17 @@ function AdminLoginPage() {
         return;
       }
 
+      // Make the whole app aware of the new session before the dashboard's access check runs.
+      primeAuth(data.session);
       toast.success("Welcome back to Mithara Admin");
-      router.navigate({ to: "/admin/dashboard" });
+      // Load the dashboard first (the button keeps showing its spinner), then switch once. Navigating
+      // straight away left the sign-in form on screen while the dashboard's code was still loading.
+      try {
+        await router.preloadRoute({ to: "/admin/dashboard" });
+      } catch {
+        /* navigating below still works, just without the head start */
+      }
+      await router.navigate({ to: "/admin/dashboard", replace: true });
     } catch (err: any) {
       toast.error(err?.message || "Failed to sign in");
       setIsLoading(false);

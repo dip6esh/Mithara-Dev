@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { CustomerAddress, CustomerProfile } from "./types";
@@ -16,58 +16,83 @@ export function isAdminUser(user: User | null): boolean {
 }
 
 /**
- * Last known sign-in state. Every page that calls useAuth() used to start from "loading" and wait
- * for a fresh session check, so each page change flashed a spinner. Starting from the last known
- * state shows the page at once; the check below still runs and corrects it if anything changed.
+ * One shared sign-in state for the whole app.
+ *
+ * Before, every useAuth() call kept its own copy and only listened for sign-in changes while it was
+ * mounted. The admin login screen mounts no useAuth(), so signing in there updated nothing: the
+ * dashboard then started from the old "signed out" copy, decided you were not an admin and sent you
+ * straight back to the login screen. Now a single listener updates one store that every page reads,
+ * so the state is always the real one (and is primed by the login screen the moment sign-in succeeds).
  */
-let lastAuth: AuthState | null = null;
+const LOADING: AuthState = { user: null, session: null, isAdmin: false, isLoading: true };
+let state: AuthState = LOADING;
+let started = false;
+const listeners = new Set<() => void>();
+const subscribe = (l: () => void) => {
+  listeners.add(l);
+  return () => listeners.delete(l);
+};
+
+function setAuth(session: Session | null) {
+  const user = session?.user ?? null;
+  state = { user, session, isAdmin: isAdminUser(user), isLoading: false };
+  listeners.forEach((l) => l());
+}
+
+/** Tell the app about a sign-in / sign-out right away, without waiting for the listener. */
+export function primeAuth(session: Session | null) {
+  setAuth(session);
+}
+
+/** Starts the single listener (browser only, once). Done lazily so a missing env never breaks import. */
+function startAuth() {
+  if (started || typeof window === "undefined") return;
+  started = true;
+  try {
+    supabase.auth.onAuthStateChange((_event, session) => setAuth(session));
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => setAuth(session))
+      .catch(() => setAuth(null));
+  } catch {
+    started = false;
+    setAuth(null);
+  }
+}
+
+/**
+ * Used by the router BEFORE any admin page is drawn: reads the saved session (a quick local read),
+ * fills the shared sign-in store, and says whether this visitor is an administrator. Because the
+ * answer is known up front, a signed-out visitor is sent to the sign-in screen without any admin
+ * page (or "verifying" screen) appearing first. Browser only; on the server it answers false.
+ */
+export async function getAdminAccess(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  startAuth();
+  if (!state.isLoading) return state.isAdmin;
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    setAuth(session);
+    return isAdminUser(session?.user ?? null);
+  } catch {
+    setAuth(null);
+    return false;
+  }
+}
 
 export function useAuth(): AuthState {
-  const [state, setStateRaw] = useState<AuthState>(
-    () => lastAuth ?? { user: null, session: null, isAdmin: false, isLoading: true },
-  );
-  const setState = (next: AuthState) => {
-    lastAuth = next;
-    setStateRaw(next);
-  };
-
   useEffect(() => {
-    let mounted = true;
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!mounted) return;
-      const user = session?.user ?? null;
-      setState({
-        user,
-        session,
-        isAdmin: isAdminUser(user),
-        isLoading: false,
-      });
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      const user = session?.user ?? null;
-      setState({
-        user,
-        session,
-        isAdmin: isAdminUser(user),
-        isLoading: false,
-      });
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
+    startAuth();
   }, []);
-
-  return state;
+  return useSyncExternalStore(subscribe, () => state, () => LOADING);
 }
 
 export async function signOut() {
-  return await supabase.auth.signOut();
+  const result = await supabase.auth.signOut();
+  setAuth(null);
+  return result;
 }
 
 /* -------------------------------------------------------------------------- */

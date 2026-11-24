@@ -1,39 +1,30 @@
 import React from "react";
 import { useRouter } from "@tanstack/react-router";
 import { useAuth } from "../../lib/auth";
-import { ShieldAlert, Loader2 } from "lucide-react";
-import logoIcon from "../../assets/mithara-icon.png";
+import { ShieldAlert } from "lucide-react";
+import { AdminSplash } from "./AdminSplash";
 
+/**
+ * Safety net while the console is open. The router already checks access before any admin page is
+ * drawn (see routes/admin.tsx); this covers what happens afterwards, such as signing out in another
+ * tab or a session that expires.
+ */
 export function AdminGuard({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, isLoading } = useAuth();
   const router = useRouter();
 
   React.useEffect(() => {
-    if (!isLoading) {
-      if (!user || !isAdmin) {
-        router.navigate({ to: "/admin/login" });
-      }
+    if (!isLoading && (!user || !isAdmin)) {
+      // replace: the back button must not return to a page that would only bounce you out again.
+      router.navigate({ to: "/admin/login", replace: true });
     }
   }, [user, isAdmin, isLoading, router]);
 
-  if (isLoading) {
-    return (
-      <div className="admin-theme flex min-h-screen flex-col items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-5">
-          <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-[#282345] shadow-xl">
-            <img src={logoIcon} alt="" className="h-10 w-10 object-contain" />
-            <Loader2 className="absolute -right-2 -bottom-2 h-7 w-7 animate-spin rounded-full bg-background p-1 text-[#d39c54]" />
-          </div>
-          <div className="text-center">
-            <p className="font-serif text-lg text-foreground">Verifying access</p>
-            <p className="mt-1 text-xs text-muted-foreground">Checking administrator credentials…</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <AdminSplash title="Verifying access" subtitle="Checking administrator credentials…" />;
+  if (!user) return <AdminSplash title="Signing you out" subtitle="Taking you to the sign-in screen…" />;
 
-  if (!user || !isAdmin) {
+  // Signed in, but not as an administrator.
+  if (!isAdmin) {
     return (
       <div className="admin-theme flex min-h-screen flex-col items-center justify-center bg-background px-4 text-center">
         <div className="max-w-md rounded-3xl border border-border bg-card p-8 shadow-xl">

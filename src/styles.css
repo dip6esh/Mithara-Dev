@@ -550,3 +550,6 @@ html:has(.admin-theme) { scrollbar-gutter: stable; }
   .admin-theme *, .admin-theme *::before, .admin-theme *::after { animation-duration: .001ms !important; animation-delay: 0ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
   .adm-card:hover { transform: none; }
 }
+
+/* Admin access / loading splash: the card fades in after a beat, so a fast check never flashes a screen. */
+.adm-splash-body { animation: adm-fade .4s ease .25s both; }

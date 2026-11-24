@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Bell, BellOff, Phone, MapPin, ShoppingBag, Volume2, X } from "lucide-react";
+import { Bell, BellOff, BellRing, Phone, MapPin, ShoppingBag, Volume2, X } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { formatINR } from "../../lib/enquiry";
 import { PAYMENT_TONE_CLASS, paymentSummary } from "../../lib/orderFlow";
@@ -115,7 +115,7 @@ function addressLine(o: Order): string {
 /** Bell button for the admin header: turns the new-order sound on or off (and plays a test ring). */
 export function OrderSoundToggle({ tone = "light" }: { tone?: "light" | "dark" }) {
   const on = useSoundEnabled();
-  const Icon = on ? Bell : BellOff;
+  const Icon = on ? BellRing : BellOff;
   return (
     <button
       type="button"

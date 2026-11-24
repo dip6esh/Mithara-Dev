@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { supabase } from "../../lib/supabase";
 import { cacheGet, cacheSet, hasCache, useCachedState } from "../../lib/adminCache";
-import { fetchInvoiceMap, invoiceHref, type InvoiceSummary } from "../../lib/invoice";
+import { fetchInvoiceMap, invoiceHref, issueMissingInvoices, type InvoiceSummary } from "../../lib/invoice";
 import { Order, OrderStatus, DeliveryType, PaidVia } from "../../lib/types";
 import { PAID_VIA_LABEL, PAYMENT_TONE_CLASS, STATUS_LABEL, paymentSummary } from "../../lib/orderFlow";
 import { useOrdersRealtime } from "../../hooks/useAdminOrders";
@@ -27,6 +27,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ModalBackdrop } from "../../components/ModalBackdrop";
+import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
+import { OrderProgress } from "../../components/admin/OrderProgress";
+import { describeAction, type PendingAction } from "../../lib/orderActions";
 
 /** The note a customer typed at checkout. Manual orders keep their item text in `notes`, so ignore a note that just repeats an item. */
 function customerNote(o: Order): string | null {
@@ -75,6 +78,8 @@ function AdminOrdersPage() {
   // loading older ones. `limitRef` makes live refreshes keep everything already loaded.
   const PAGE_SIZE = 500;
   const limitRef = useRef(PAGE_SIZE);
+  /** The quiet "invoice catch-up" runs at most once per visit to this page. */
+  const invoiceCatchUpTried = useRef(false);
   const [hasMore, setHasMore] = useCachedState<boolean>("admin:orders:hasMore", false);
   const [loadingMore, setLoadingMore] = useState(false);
   // Matches found by searching the *whole* history on the server (beyond what is loaded).
@@ -86,6 +91,8 @@ function AdminOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [adminNoteInput, setAdminNoteInput] = useState("");
   const [isUpdatingOrder, setIsUpdatingOrder] = useState(false);
+  /** The action waiting for the admin's "yes" in the confirmation box. */
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
   // Manual order modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -110,7 +117,20 @@ function AdminOrdersPage() {
       setHasMore(rows.length > limitRef.current);
       const page = rows.slice(0, limitRef.current);
       setOrders(page);
-      fetchInvoiceMap(page.filter((o) => o.payment_status === "paid").map((o) => o.id)).then(setInvoiceMap);
+      const paidIds = page.filter((o) => o.payment_status === "paid" && o.status !== "cancelled").map((o) => o.id);
+      fetchInvoiceMap(paidIds).then(async (map) => {
+        setInvoiceMap(map);
+        // Safety net, run quietly: a paid order should always have an invoice. If one is missing,
+        // create it now so staff never see a gap or need a special button.
+        if (!invoiceCatchUpTried.current && paidIds.some((id) => !map[id])) {
+          invoiceCatchUpTried.current = true;
+          try {
+            if ((await issueMissingInvoices()) > 0) setInvoiceMap(await fetchInvoiceMap(paidIds));
+          } catch (e) {
+            console.warn("Invoice catch-up skipped", e);
+          }
+        }
+      });
       if (selectedOrder) {
         const updated = page.find((o) => o.id === selectedOrder.id);
         if (updated) setSelectedOrder(updated);
@@ -222,9 +242,31 @@ function AdminOrdersPage() {
     }
   };
 
-  const handleCancel = (order: Order) => {
-    if (!window.confirm(`Cancel order ${order.order_number}?`)) return;
-    handleUpdateStatus(order.id, "cancelled");
+  /** Every action that changes an order or its invoice goes through the confirmation box first. */
+  const ask = (action: PendingAction) => setPendingAction(action);
+
+  const runPendingAction = async () => {
+    const a = pendingAction;
+    if (!a) return;
+    switch (a.kind) {
+      case "handover_paid":
+        await handleHandover(a.order);
+        break;
+      case "collect":
+        await handleHandover(a.order, a.via);
+        break;
+      case "cancel":
+        await handleUpdateStatus(a.order.id, "cancelled");
+        break;
+      case "restore":
+      case "undo_handover":
+        await handleUpdateStatus(a.order.id, "new");
+        break;
+      case "undo_payment":
+        await handleMarkUnpaid(a.order.id);
+        break;
+    }
+    setPendingAction(null);
   };
 
   /** Correction only: undo a "paid" mark. Normal payments are recorded at handover. */
@@ -237,7 +279,7 @@ function AdminOrdersPage() {
         .eq("id", orderId);
 
       if (error) throw error;
-      toast.success("Payment marked as unpaid");
+      toast.success("Payment undone");
       fetchOrders();
     } catch (err: any) {
       toast.error(err.message || "Failed to update payment");
@@ -674,9 +716,9 @@ function AdminOrdersPage() {
                 </div>
               </div>
 
-              {/* Order handling: received -> handed over */}
-              <div className="mb-6 rounded-2xl bg-neutral-950/60 p-4 border border-neutral-800">
-                <div className="mb-3 flex items-center justify-between gap-2">
+              {/* Order handling: Received -> Paid -> Handed over */}
+              <div className="mb-6 rounded-2xl border border-neutral-800 bg-neutral-950/60 p-4">
+                <div className="mb-4 flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
                     Order status
                   </span>
@@ -687,97 +729,99 @@ function AdminOrdersPage() {
                   </span>
                 </div>
 
-                {selectedOrder.status === "new" && (
+                <OrderProgress order={selectedOrder} />
+
+                {/* Next step: one clear thing to do */}
+                {selectedOrder.status === "new" && selectedOrder.payment_status === "paid" && (
                   <>
-                    {selectedOrder.payment_status === "paid" ? (
-                      <>
-                        <p className="mb-3 text-sm text-emerald-300">
-                          Already paid ({paymentSummary(selectedOrder).detail}). Nothing to collect.
-                        </p>
-                        <button
-                          disabled={isUpdatingOrder}
-                          onClick={() => handleHandover(selectedOrder)}
-                          className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
-                        >
-                          Mark handed over
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <p className="mb-3 text-sm text-amber-200">
-                          Collect <span className="font-bold">{formatINR(selectedOrder.total_inr)}</span> at handover.
-                          Choose how it was paid:
-                        </p>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            disabled={isUpdatingOrder}
-                            onClick={() => handleHandover(selectedOrder, "cash")}
-                            className="rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
-                          >
-                            Cash received
-                          </button>
-                          <button
-                            disabled={isUpdatingOrder}
-                            onClick={() => handleHandover(selectedOrder, "upi")}
-                            className="rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
-                          >
-                            UPI / online received
-                          </button>
-                        </div>
-                      </>
-                    )}
+                    <p className="mb-3 text-sm text-emerald-300">
+                      Already paid ({paymentSummary(selectedOrder).detail}). Nothing to collect.
+                    </p>
                     <button
                       disabled={isUpdatingOrder}
-                      onClick={() => handleCancel(selectedOrder)}
-                      className="mt-3 text-xs font-medium text-rose-300 hover:text-rose-200 disabled:opacity-60"
+                      onClick={() => ask({ kind: "handover_paid", order: selectedOrder })}
+                      className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
                     >
-                      Cancel this order
+                      Mark handed over
                     </button>
+                  </>
+                )}
+
+                {selectedOrder.status === "new" && selectedOrder.payment_status !== "paid" && (
+                  <>
+                    <p className="mb-3 text-sm text-amber-200">
+                      Collect <span className="font-bold">{formatINR(selectedOrder.total_inr)}</span> at handover.
+                      Choose how it was paid:
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        disabled={isUpdatingOrder}
+                        onClick={() => ask({ kind: "collect", order: selectedOrder, via: "cash" })}
+                        className="rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
+                      >
+                        Cash received
+                      </button>
+                      <button
+                        disabled={isUpdatingOrder}
+                        onClick={() => ask({ kind: "collect", order: selectedOrder, via: "upi" })}
+                        className="rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
+                      >
+                        UPI / online received
+                      </button>
+                    </div>
                   </>
                 )}
 
                 {selectedOrder.status === "completed" && (
-                  <>
-                    <p className="text-sm text-emerald-300">
-                      Handed over · {paymentSummary(selectedOrder).label} ({paymentSummary(selectedOrder).detail})
-                      {selectedOrder.paid_at
-                        ? ` · ${new Date(selectedOrder.paid_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`
-                        : ""}
-                    </p>
-                    <button
-                      disabled={isUpdatingOrder}
-                      onClick={() => handleUpdateStatus(selectedOrder.id, "new")}
-                      className="mt-3 text-xs font-medium text-neutral-400 hover:text-neutral-200 disabled:opacity-60"
-                    >
-                      Undo — move back to Order received
-                    </button>
-                  </>
-                )}
-
-                {selectedOrder.status === "cancelled" && (
-                  <button
-                    disabled={isUpdatingOrder}
-                    onClick={() => handleUpdateStatus(selectedOrder.id, "new")}
-                    className="text-xs font-medium text-neutral-400 hover:text-neutral-200 disabled:opacity-60"
-                  >
-                    Restore order
-                  </button>
+                  <p className="text-sm text-emerald-300">
+                    Handed over · {paymentSummary(selectedOrder).label} ({paymentSummary(selectedOrder).detail})
+                    {selectedOrder.paid_at
+                      ? ` · ${new Date(selectedOrder.paid_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`
+                      : ""}
+                  </p>
                 )}
 
                 {selectedOrder.status === "pending_payment" && (
-                  <>
-                    <p className="text-sm text-neutral-400">
-                      The customer is still paying online. It becomes an order once payment goes through.
-                    </p>
+                  <p className="text-sm text-neutral-400">
+                    The customer is still paying online. It becomes an order once payment goes through.
+                  </p>
+                )}
+
+                {selectedOrder.status === "cancelled" && (
+                  <p className="text-sm text-neutral-400">
+                    Cancelled orders do not count as sales. You can bring it back if this was a mistake.
+                  </p>
+                )}
+
+                {/* Same place on every order: undo / cancel / restore */}
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-800 pt-3">
+                  {selectedOrder.status === "cancelled" ? (
                     <button
                       disabled={isUpdatingOrder}
-                      onClick={() => handleCancel(selectedOrder)}
-                      className="mt-3 text-xs font-medium text-rose-300 hover:text-rose-200 disabled:opacity-60"
+                      onClick={() => ask({ kind: "restore", order: selectedOrder })}
+                      className="text-xs font-semibold text-amber-300 hover:text-amber-200 disabled:opacity-60"
+                    >
+                      Restore this order
+                    </button>
+                  ) : (
+                    <button
+                      disabled={isUpdatingOrder}
+                      onClick={() => ask({ kind: "cancel", order: selectedOrder })}
+                      className="text-xs font-semibold text-rose-300 hover:text-rose-200 disabled:opacity-60"
                     >
                       Cancel this order
                     </button>
-                  </>
-                )}
+                  )}
+                  {selectedOrder.status === "completed" && (
+                    <button
+                      disabled={isUpdatingOrder}
+                      onClick={() => ask({ kind: "undo_handover", order: selectedOrder })}
+                      className="text-xs font-medium text-neutral-400 hover:text-neutral-200 disabled:opacity-60"
+                    >
+                      Move back to Order received
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Customer & Address Info */}
@@ -917,7 +961,7 @@ function AdminOrdersPage() {
                           {invoiceMap[selectedOrder.id].is_test ? " (test)" : ""}
                         </span>
                       ) : (
-                        <span className="text-neutral-500">not issued yet (see Invoices &rarr; Check for missing)</span>
+                        <span className="text-neutral-500">is being created…</span>
                       )}
                     </span>
                     {invoiceMap[selectedOrder.id] && (
@@ -932,13 +976,19 @@ function AdminOrdersPage() {
                     )}
                   </div>
                 )}
+                {selectedOrder.payment_status !== "paid" && selectedOrder.status !== "cancelled" && (
+                  <p className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-xs text-neutral-400">
+                    Invoice: created automatically when payment is received.
+                  </p>
+                )}
                 {selectedOrder.payment_status === "paid" && selectedOrder.status !== "cancelled" && (
                   <button
                     disabled={isUpdatingOrder}
-                    onClick={() => handleMarkUnpaid(selectedOrder.id)}
+                    onClick={() => ask({ kind: "undo_payment", order: selectedOrder })}
+                    title="Use this if payment was recorded by mistake. The invoice will be marked Cancelled."
                     className="mt-3 text-xs font-medium text-neutral-500 hover:text-neutral-300 disabled:opacity-60"
                   >
-                    Recorded by mistake? Mark as unpaid
+                    Marked paid by mistake? Undo payment
                   </button>
                 )}
               </div>
@@ -1084,6 +1134,24 @@ function AdminOrdersPage() {
           </ModalBackdrop>
         )}
       </div>
+
+      {/* Confirmation box: says what will happen before any order/payment/invoice change */}
+      {pendingAction && (() => {
+        const copy = describeAction(pendingAction, invoiceMap[pendingAction.order.id]);
+        return (
+          <ConfirmDialog
+            title={copy.title}
+            intro={copy.intro}
+            effects={copy.effects}
+            confirmLabel={copy.confirmLabel}
+            cancelLabel={copy.cancelLabel}
+            tone={copy.tone}
+            busy={isUpdatingOrder}
+            onConfirm={runPendingAction}
+            onClose={() => setPendingAction(null)}
+          />
+        );
+      })()}
     </>
   );
 }

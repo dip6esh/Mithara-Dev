@@ -25,7 +25,8 @@ export function ModalBackdrop({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeRef.current();
+      // A confirmation box on top handles Escape itself; only the top-most box should close.
+      if (e.key === "Escape" && !document.body.dataset.confirmOpen) closeRef.current();
     };
     const prev = document.body.style.overflow;
     const prevPadding = document.body.style.paddingRight;

@@ -71,6 +71,17 @@ export const DOC_TITLE: Record<InvoiceDocType, string> = {
   bill_of_supply: "Bill of Supply",
 };
 
+/** Plain-English names for admin screens. The printed invoice keeps the legal titles above. */
+export const DOC_LABEL: Record<InvoiceDocType, string> = {
+  tax_invoice: "Tax bill",
+  bill_of_supply: "Bill (no tax)",
+};
+
+export const STATUS_LABEL: Record<Invoice["status"], string> = {
+  issued: "Active",
+  void: "Cancelled",
+};
+
 export const invoiceHref = (id: string) => `/invoice/${id}`;
 
 /**

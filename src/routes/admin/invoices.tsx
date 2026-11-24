@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, ExternalLink, FileText, RefreshCw, Search, Wrench } from "lucide-react";
-import { toast } from "sonner";
+import { ChevronDown, Download, ExternalLink, FileText, FlaskConical, RefreshCw, Search } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { cacheGet, cacheSet, hasCache, useCachedState } from "../../lib/adminCache";
 import {
-  DOC_TITLE,
+  DOC_LABEL,
+  STATUS_LABEL,
   invoiceHref,
   issueMissingInvoices,
   money,
@@ -23,6 +23,31 @@ const COLS =
 const fmt = (iso: string) =>
   new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
 
+/** Today's date as YYYY-MM-DD in Indian time. */
+const istDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+type Range = "all" | "today" | "week" | "month" | "custom";
+
+/** Start/end (YYYY-MM-DD, IST) for the quick date chips. The week starts on Monday. */
+function rangeDates(range: Exclude<Range, "custom">): { from: string; to: string } {
+  const today = istDay(new Date());
+  if (range === "all") return { from: "", to: "" };
+  if (range === "today") return { from: today, to: today };
+  if (range === "month") return { from: `${today.slice(0, 8)}01`, to: today };
+  const [y, m, d] = today.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const sinceMonday = (dt.getUTCDay() + 6) % 7;
+  dt.setUTCDate(dt.getUTCDate() - sinceMonday);
+  return { from: dt.toISOString().slice(0, 10), to: today };
+}
+
+const RANGE_CHIPS: { id: Exclude<Range, "custom">; label: string }[] = [
+  { id: "all", label: "All time" },
+  { id: "today", label: "Today" },
+  { id: "week", label: "This week" },
+  { id: "month", label: "This month" },
+];
+
 function AdminInvoicesPage() {
   const [rows, setRows] = useCachedState<InvoiceSummary[]>("admin:invoices:list", []);
   const [loading, setLoading] = useState(() => !hasCache("admin:invoices:list"));
@@ -30,10 +55,19 @@ function AdminInvoicesPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "tax_invoice" | "bill_of_supply">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "issued" | "void">("all");
-  const [showTest, setShowTest] = useState(false);
+  // "Real" = money actually received. "Practice" = simulated online payments (demo mode).
+  const [tab, setTab] = useState<"real" | "practice">("real");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [fixing, setFixing] = useState(false);
+  const [range, setRange] = useState<Range>("all");
+  const [showMore, setShowMore] = useState(false);
+
+  const pickRange = (r: Exclude<Range, "custom">) => {
+    const d = rangeDates(r);
+    setRange(r);
+    setFrom(d.from);
+    setTo(d.to);
+  };
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -60,12 +94,19 @@ function AdminInvoicesPage() {
 
   useEffect(() => {
     load(hasCache("admin:invoices:list"));
+    // Safety net, run quietly: if any paid order is somehow missing its invoice, create it now.
+    // Staff never need to think about this.
+    issueMissingInvoices()
+      .then((n) => {
+        if (n > 0) load(true);
+      })
+      .catch((e) => console.warn("Invoice catch-up skipped", e));
   }, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
-      if (!showTest && r.is_test) return false;
+      if (tab === "practice" ? !r.is_test : r.is_test) return false;
       if (typeFilter !== "all" && r.doc_type !== typeFilter) return false;
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
       // Date filter compares IST calendar days.
@@ -75,11 +116,19 @@ function AdminInvoicesPage() {
       if (q && !`${r.invoice_number} ${r.order_number} ${r.customer_name}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [rows, search, typeFilter, statusFilter, showTest, from, to]);
+  }, [rows, search, typeFilter, statusFilter, tab, from, to]);
 
-  // Totals only count live, real invoices in the current filter.
+  const tabCounts = useMemo(
+    () => ({
+      real: rows.filter((r) => !r.is_test).length,
+      practice: rows.filter((r) => r.is_test).length,
+    }),
+    [rows],
+  );
+
+  // Totals only count active (not cancelled) invoices in the current tab and filters.
   const totals = useMemo(() => {
-    const live = filtered.filter((r) => r.status === "issued" && !r.is_test);
+    const live = filtered.filter((r) => r.status === "issued");
     return {
       count: live.length,
       value: live.reduce((s, r) => s + Number(r.total_inr), 0),
@@ -89,15 +138,15 @@ function AdminInvoicesPage() {
 
   const exportCsv = () => {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const header = ["Invoice no", "Date", "Order no", "Customer", "Document", "Status", "Test", "Total (INR)", "Tax (INR)"];
+    const header = ["Invoice no", "Date", "Order no", "Customer", "Document", "Status", "Practice", "Total (INR)", "Tax (INR)"];
     const lines = filtered.map((r) =>
       [
         r.invoice_number,
         new Date(r.issued_at).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }),
         r.order_number,
         r.customer_name,
-        DOC_TITLE[r.doc_type],
-        r.status,
+        DOC_LABEL[r.doc_type],
+        STATUS_LABEL[r.status],
         r.is_test ? "yes" : "no",
         r.total_inr,
         r.tax_inr,
@@ -105,27 +154,16 @@ function AdminInvoicesPage() {
         .map(esc)
         .join(","),
     );
-    const blob = new Blob([[header.map(esc).join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob(["\uFEFF" + [header.map(esc).join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `mithara_invoices_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `mithara_invoices_${tab === "practice" ? "practice_" : ""}${istDay(new Date())}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const handleCatchUp = async () => {
-    setFixing(true);
-    try {
-      const n = await issueMissingInvoices();
-      toast.success(n > 0 ? `${n} missing invoice${n === 1 ? "" : "s"} issued` : "Nothing missing. All paid orders have invoices.");
-      if (n > 0) load();
-    } catch (e: any) {
-      toast.error(e?.message || "Could not check for missing invoices");
-    } finally {
-      setFixing(false);
-    }
-  };
+  const moreActive = (typeFilter !== "all" ? 1 : 0) + (statusFilter !== "all" ? 1 : 0) + (range === "custom" ? 1 : 0);
 
   const select =
     "rounded-xl border border-neutral-800 bg-neutral-950/80 px-3 py-2 text-xs text-neutral-300 focus:outline-none";
@@ -137,18 +175,18 @@ function AdminInvoicesPage() {
           <div>
             <h1 className="font-serif text-2xl font-bold tracking-tight text-neutral-100 sm:text-3xl">Invoices</h1>
             <p className="mt-1 text-xs text-neutral-400">
-              Issued automatically when a payment is received, online or at handover
+              Created automatically the moment a payment is received, online or at handover. Nothing to do here.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={handleCatchUp}
-              disabled={fixing}
-              title="Issue invoices for any paid order that does not have one"
-              className="flex items-center gap-1.5 rounded-xl border border-neutral-800 bg-neutral-900/80 px-3.5 py-2 text-xs font-medium text-neutral-300 transition-colors hover:border-amber-500/30 hover:text-amber-300 disabled:opacity-60"
+              onClick={exportCsv}
+              disabled={filtered.length === 0}
+              title="A spreadsheet (opens in Excel) of the invoices listed below"
+              className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 transition-colors hover:bg-amber-400 disabled:opacity-50"
             >
-              <Wrench className={`h-3.5 w-3.5 ${fixing ? "animate-pulse" : ""}`} />
-              <span>Check for missing</span>
+              <Download className="h-4 w-4" />
+              <span>Download for my accountant</span>
             </button>
             <button
               onClick={() => load()}
@@ -158,21 +196,42 @@ function AdminInvoicesPage() {
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
               <span>Refresh</span>
             </button>
-            <button
-              onClick={exportCsv}
-              disabled={filtered.length === 0}
-              className="flex items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2 text-xs font-semibold text-gold-foreground shadow-sm transition-colors hover:bg-amber-400 disabled:opacity-50"
-            >
-              <Download className="h-4 w-4" />
-              <span>Export CSV</span>
-            </button>
           </div>
         </div>
+
+        {/* Real / Practice tabs */}
+        <div className="flex flex-wrap items-center gap-2">
+          {([
+            { id: "real", label: "Real invoices", count: tabCounts.real },
+            { id: "practice", label: "Practice", count: tabCounts.practice },
+          ] as const).map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition-colors ${
+                tab === t.id
+                  ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                  : "border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-neutral-200"
+              }`}
+            >
+              {t.id === "practice" && <FlaskConical className="h-3.5 w-3.5" />}
+              {t.label}
+              <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-[10px] text-neutral-300">{t.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {tab === "practice" && (
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+            <span className="font-semibold">Practice mode.</span> These come from simulated online payments, where no
+            real money was taken. They are not valid tax documents.
+          </div>
+        )}
 
         {/* Summary */}
         <div className="grid gap-3 sm:grid-cols-3">
           {[
-            { label: "Invoices (live)", value: String(totals.count) },
+            { label: tab === "practice" ? "Practice invoices" : "Invoices", value: String(totals.count) },
             { label: "Invoiced value", value: money(totals.value) },
             { label: "Tax charged", value: money(totals.tax) },
           ].map((c) => (
@@ -183,36 +242,100 @@ function AdminInvoicesPage() {
           ))}
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-col gap-3 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute top-2.5 left-3 h-4 w-4 text-neutral-500" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search invoice no, order no or customer…"
-              className="w-full rounded-xl border border-neutral-800 bg-neutral-950/80 py-2 pr-4 pl-9 text-xs text-neutral-200 placeholder-neutral-600 focus:border-amber-500/50 focus:outline-none"
-            />
+        {/* Filters: search + quick dates always visible; the rest is tucked under "More filters" */}
+        <div className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute top-2.5 left-3 h-4 w-4 text-neutral-500" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by invoice no, order no or customer name…"
+                className="w-full rounded-xl border border-neutral-800 bg-neutral-950/80 py-2 pr-4 pl-9 text-xs text-neutral-200 placeholder-neutral-600 focus:border-amber-500/50 focus:outline-none"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {RANGE_CHIPS.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => pickRange(c.id)}
+                  className={`rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                    range === c.id
+                      ? "border-amber-500/50 bg-amber-500/15 text-amber-300"
+                      : "border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:text-neutral-200"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} className={select}>
-              <option value="all">All documents</option>
-              <option value="tax_invoice">Tax invoices</option>
-              <option value="bill_of_supply">Bills of supply</option>
-            </select>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className={select}>
-              <option value="all">Any status</option>
-              <option value="issued">Issued</option>
-              <option value="void">Void</option>
-            </select>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From date" className={select} />
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="To date" className={select} />
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
-              <input type="checkbox" checked={showTest} onChange={(e) => setShowTest(e.target.checked)} className="accent-amber-500" />
-              Show test invoices
-            </label>
-          </div>
+
+          <button
+            onClick={() => setShowMore((v) => !v)}
+            aria-expanded={showMore}
+            className="flex items-center gap-1.5 text-xs font-medium text-neutral-400 hover:text-neutral-200"
+          >
+            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showMore ? "rotate-180" : ""}`} />
+            More filters
+            {moreActive > 0 && (
+              <span className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
+                {moreActive}
+              </span>
+            )}
+          </button>
+
+          {showMore && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-neutral-800 pt-3">
+              <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} className={select}>
+                <option value="all">All bill types</option>
+                <option value="tax_invoice">Tax bills</option>
+                <option value="bill_of_supply">Bills (no tax)</option>
+              </select>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className={select}>
+                <option value="all">Active and cancelled</option>
+                <option value="issued">Active only</option>
+                <option value="void">Cancelled only</option>
+              </select>
+              <label className="flex items-center gap-2 text-xs text-neutral-400">
+                From
+                <input
+                  type="date"
+                  value={from}
+                  onChange={(e) => {
+                    setFrom(e.target.value);
+                    setRange("custom");
+                  }}
+                  className={select}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-xs text-neutral-400">
+                To
+                <input
+                  type="date"
+                  value={to}
+                  onChange={(e) => {
+                    setTo(e.target.value);
+                    setRange("custom");
+                  }}
+                  className={select}
+                />
+              </label>
+              {moreActive > 0 && (
+                <button
+                  onClick={() => {
+                    setTypeFilter("all");
+                    setStatusFilter("all");
+                    pickRange("all");
+                  }}
+                  className="text-xs font-medium text-amber-300 hover:text-amber-200"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Table */}
@@ -239,7 +362,11 @@ function AdminInvoicesPage() {
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-neutral-500">
-                      {rows.length === 0 ? "No invoices yet. They appear as soon as an order is paid." : "No invoices match these filters."}
+                      {tabCounts[tab] === 0
+                        ? tab === "practice"
+                          ? "No practice invoices. They appear when a customer pays online while the shop is in practice mode."
+                          : "No invoices yet. One is created as soon as an order is paid."
+                        : "No invoices match these filters."}
                     </td>
                   </tr>
                 ) : (
@@ -251,17 +378,19 @@ function AdminInvoicesPage() {
                             {r.invoice_number}
                           </span>
                           {r.status === "void" && (
-                            <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-300">Void</span>
-                          )}
-                          {r.is_test && (
-                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-300">Test</span>
+                            <span
+                              title={r.void_reason ?? undefined}
+                              className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-300"
+                            >
+                              Cancelled
+                            </span>
                           )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-neutral-300">{fmt(r.issued_at)}</td>
                       <td className="px-4 py-3 font-mono text-neutral-300">{r.order_number}</td>
                       <td className="px-4 py-3 text-neutral-200">{r.customer_name}</td>
-                      <td className="px-4 py-3 text-neutral-400">{DOC_TITLE[r.doc_type]}</td>
+                      <td className="px-4 py-3 text-neutral-400">{DOC_LABEL[r.doc_type]}</td>
                       <td className="px-4 py-3 text-right text-neutral-300">{Number(r.tax_inr) > 0 ? money(r.tax_inr) : "—"}</td>
                       <td className="px-4 py-3 text-right font-semibold text-neutral-100">{money(r.total_inr)}</td>
                       <td className="px-4 py-3 text-right">

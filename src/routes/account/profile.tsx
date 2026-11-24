@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useGreeting } from "@/hooks/useGreeting";
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import {
   useAuth,
@@ -354,8 +355,7 @@ function CustomerProfilePage() {
   const fullName: string = profile?.name || user?.user_metadata?.name || "";
   const firstName = fullName.trim().split(/\s+/)[0];
   const phone: string | undefined = profile?.phone || user?.user_metadata?.phone;
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const greeting = useGreeting();
   const latestActive = activeOrders[0];
   const memberSince = profile?.created_at
     ? new Date(profile.created_at).toLocaleDateString("en-IN", { month: "long", year: "numeric" })

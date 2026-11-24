@@ -20,6 +20,7 @@ import { supabase } from "../../lib/supabase";
 import { unwrapSetting } from "../../lib/settings";
 import { AdminGuard } from "./AdminGuard";
 import { NewOrderAlert, OrderSoundToggle } from "./NewOrderAlert";
+import { LowStockWatcher } from "./LowStockAlert";
 import { toast } from "sonner";
 import logoText from "../../assets/mithara-logo.png";
 import logoIcon from "../../assets/mithara-icon.png";
@@ -356,6 +357,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </main>
         </div>
         <NewOrderAlert />
+        <LowStockWatcher />
       </div>
     </AdminGuard>
   );

@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { createFileRoute } from "@tanstack/react-router";
 import { supabase } from "../../lib/supabase";
+import { refreshDailyStock } from "../../lib/dailyStock";
 import { cacheGet, cacheSet, hasCache, useCachedState } from "../../lib/adminCache";
 import { Product, ProductCategory, ProductStatus, ProductVariant } from "../../lib/types";
 import {
@@ -402,6 +403,7 @@ function AdminMenuPage() {
   const fetchProducts = async (silent = false) => {
     if (!silent) setIsLoading(true);
     try {
+      await refreshDailyStock(); // a new day starts with full stock
       const { data, error } = await supabase
         .from("products")
         .select("*")
@@ -597,6 +599,17 @@ function AdminMenuPage() {
       return;
     }
 
+    const alertAt =
+      editingProduct.daily_stock !== null && editingProduct.daily_stock !== undefined
+        ? (editingProduct.low_stock_alert_at ?? null)
+        : null; // no daily limit, so no alert
+    if (alertAt !== null && (!Number.isInteger(alertAt) || alertAt < 0 || alertAt > Number(editingProduct.daily_stock))) {
+      toast.error(`The low-stock alert number must be between 0 and the daily limit (${editingProduct.daily_stock}).`);
+      return;
+    }
+    // Only send the column when it matters, so saving keeps working on a database that has not run migration 009.
+    const includeAlert = alertAt !== null || "low_stock_alert_at" in editingProduct;
+
     setIsSaving(true);
     try {
       const slug =
@@ -622,12 +635,18 @@ function AdminMenuPage() {
           editingProduct.daily_stock !== null && editingProduct.daily_stock !== undefined
             ? Number(editingProduct.daily_stock)
             : null,
-        stock_remaining:
-          editingProduct.stock_remaining !== null && editingProduct.stock_remaining !== undefined
-            ? Number(editingProduct.stock_remaining)
-            : editingProduct.daily_stock,
         updated_at: new Date().toISOString(),
       };
+      // Orders lower stock_remaining all day. Saving other changes (name, price, photo...) must not put
+      // sold portions back, so stock is only reset when the daily limit itself was edited (or for a new item).
+      const original = editingProduct.id ? products.find((p) => p.id === editingProduct.id) : undefined;
+      const limitChanged = !original || (original.daily_stock ?? null) !== (editingProduct.daily_stock ?? null);
+      if (limitChanged) {
+        (payload as Record<string, unknown>).stock_remaining =
+          editingProduct.daily_stock !== null && editingProduct.daily_stock !== undefined
+            ? Number(editingProduct.daily_stock)
+            : null;
+      }
 
       // Website detail fields (migration 004).
       const details = {
@@ -647,7 +666,14 @@ function AdminMenuPage() {
           ? supabase.from("products").update(body).eq("id", editingProduct.id)
           : supabase.from("products").insert(body);
 
-      let { error } = await write({ ...payload, ...details });
+      const alertBody = includeAlert ? { low_stock_alert_at: alertAt } : {};
+      let { error } = await write({ ...payload, ...details, ...alertBody });
+      let alertSkipped = false;
+      if (error && includeAlert && isMissingColumnError(error)) {
+        // Migration 009 is not applied yet: save everything else.
+        alertSkipped = true;
+        ({ error } = await write({ ...payload, ...details }));
+      }
       if (error && isMissingColumnError(error)) {
         // The database hasn't had migration 004 applied yet: still save the core fields so nothing is lost.
         ({ error } = await write(payload));
@@ -659,6 +685,9 @@ function AdminMenuPage() {
       }
       if (error) throw error;
       toast.success(`${editingProduct.id ? "Updated" : "Created"} "${payload.name}"`);
+      if (alertSkipped && alertAt !== null) {
+        toast.warning("Saved, but the low-stock alert number was skipped. Run migration 009 in Supabase first.");
+      }
 
       setIsModalOpen(false);
       setEditingProduct(null);
@@ -1586,6 +1615,33 @@ function AdminMenuPage() {
                     />
                   </div>
                 </div>
+
+                {editingProduct.daily_stock !== null && editingProduct.daily_stock !== undefined && (
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-neutral-300">
+                      Low-stock alert: warn me when this many or fewer are left (leave empty for no alert)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={editingProduct.daily_stock}
+                      value={editingProduct.low_stock_alert_at ?? ""}
+                      onChange={(e) =>
+                        setEditingProduct({
+                          ...editingProduct,
+                          low_stock_alert_at: e.target.value ? parseInt(e.target.value, 10) : null,
+                        })
+                      }
+                      placeholder={`e.g. ${Math.max(1, Math.round((editingProduct.daily_stock || 0) * 0.4))}`}
+                      className="w-full rounded-xl border border-neutral-800 bg-neutral-950 p-2.5 text-base text-neutral-200 sm:text-xs focus:outline-none focus:border-amber-500"
+                    />
+                    <p className="mt-1 text-[11px] text-neutral-500">
+                      Example: daily limit {editingProduct.daily_stock}, alert number{" "}
+                      {Math.max(1, Math.round((editingProduct.daily_stock || 0) * 0.4))} → the dashboard warns, with its
+                      own sound, once {Math.max(1, Math.round((editingProduct.daily_stock || 0) * 0.4))} or fewer are left.
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="mb-1 block text-xs font-medium text-neutral-300">

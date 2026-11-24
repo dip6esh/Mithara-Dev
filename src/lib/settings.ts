@@ -197,16 +197,19 @@ export function isStoreClosed(s: StoreSettings): { closed: boolean; reason: stri
   const now = new Date();
   // These are business-hours rules for Mumbai (IST). Compare in IST whatever the visitor's timezone.
   const ist = new Date(now.getTime() + (330 + now.getTimezoneOffset()) * 60000);
-  const t = ist.getHours() * 60 + ist.getMinutes();
+  // Seconds matter: the server compares exact times, so 8:30:30 PM is already past an 8:30 PM cutoff.
+  const t = ist.getHours() * 3600 + ist.getMinutes() * 60 + ist.getSeconds();
+  const cut = cutoff === null ? null : cutoff * 60;
+  const open = reopen === null ? null : reopen * 60;
 
   let closed = false;
-  if (cutoff !== null && reopen !== null) {
-    if (cutoff > reopen) closed = t > cutoff || t < reopen; // overnight closure
-    else if (cutoff < reopen) closed = t > cutoff && t < reopen; // closed for part of the same day
-  } else if (cutoff !== null) {
-    closed = t > cutoff;
-  } else if (reopen !== null) {
-    closed = t < reopen;
+  if (cut !== null && open !== null) {
+    if (cut > open) closed = t > cut || t < open; // overnight closure
+    else if (cut < open) closed = t > cut && t < open; // closed for part of the same day
+  } else if (cut !== null) {
+    closed = t > cut;
+  } else if (open !== null) {
+    closed = t < open;
   }
   if (!closed) return { closed: false, reason: "" };
 
@@ -217,6 +220,17 @@ export function isStoreClosed(s: StoreSettings): { closed: boolean; reason: stri
         ? `Orders are closed right now. We reopen at ${clock12(reopen)}.`
         : "Orders for today are closed. Please order again tomorrow.",
   };
+}
+
+/**
+ * Re-reads the settings from the database and answers "can an order be placed this second?".
+ * Use this at the moment the customer taps Continue / Pay, so a closure or cutoff that happened
+ * while they were filling in the form is caught before anything is sent. If the database cannot be
+ * reached it falls back to the last known settings; the server still re-checks on every order.
+ */
+export async function checkStoreOpenNow(): Promise<{ closed: boolean; reason: string }> {
+  await refreshStoreSettings();
+  return isStoreClosed(current);
 }
 
 /** Delivery fee preview using the same rules as the server-side place_order function. */

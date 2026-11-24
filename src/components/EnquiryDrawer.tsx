@@ -42,6 +42,7 @@ import { useAuth } from "../lib/auth";
 import { toast } from "sonner";
 import {
   isStoreClosed,
+  checkStoreOpenNow,
   refreshStoreSettings,
   useStoreSettings,
   previewTotals,
@@ -277,7 +278,7 @@ function SummaryCard({
 }
 
 function LineRow({ line }: { line: EnquiryLine }) {
-  const { setQty, setNote, removeLine } = useEnquiry();
+  const { setQty, setNote, removeLine, storeClosed } = useEnquiry();
   const [noteOpen, setNoteOpen] = React.useState(line.note.trim() !== "");
   const label = line.variant ? `${line.name}, ${line.variant}` : line.name;
   const meta = [line.category, line.variant].filter(Boolean).join(" · ");
@@ -303,7 +304,12 @@ function LineRow({ line }: { line: EnquiryLine }) {
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <QtyStepper value={line.qty} label={label} onChange={(n) => setQty(line.key, n)} />
+        <QtyStepper
+          value={line.qty}
+          label={label}
+          blockIncrease={storeClosed}
+          onChange={(n) => setQty(line.key, n)}
+        />
         <div className="flex items-center">
           <button
             type="button"
@@ -385,11 +391,11 @@ export function EnquiryDrawer() {
   const [showQuestion, setShowQuestion] = React.useState(false);
   const [question, setQuestion] = React.useState("");
 
-  // Re-check every 30s so a cutoff that passes while the drawer is open takes effect without a reload.
+  // Re-check every 10s so a cutoff that passes while the drawer is open takes effect without a reload.
   const [clock, setClock] = React.useState(0);
   React.useEffect(() => {
     if (!open) return;
-    const t = window.setInterval(() => setClock((c) => c + 1), 30000);
+    const t = window.setInterval(() => setClock((c) => c + 1), 10000);
     return () => window.clearInterval(t);
   }, [open]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -413,6 +419,31 @@ export function EnquiryDrawer() {
       setPlaced(null);
     }
   }, [open]);
+
+  /**
+   * The store closed (holiday switched on, or the cutoff time passed) while the customer was already
+   * checking out. Drop any unfinished online order, send them back to the cart and tell them why.
+   */
+  const sendBackToCart = React.useCallback(
+    (reason: string) => {
+      const orphan = pendingOrderId;
+      setPendingOrderId(null);
+      setPriceWarning(null);
+      setStep("cart");
+      toast.error(reason || "We are not accepting orders right now.", { duration: 8000 });
+      if (orphan) {
+        // Best effort: an unpaid order should not be left waiting on the kitchen's list.
+        void supabase.rpc("cancel_my_pending_order", { p_order_id: orphan });
+      }
+    },
+    [pendingOrderId],
+  );
+
+  React.useEffect(() => {
+    if (open && store.closed && (step === "checkout" || step === "payment")) {
+      sendBackToCart(store.reason);
+    }
+  }, [open, store.closed, store.reason, step, sendBackToCart]);
 
   React.useEffect(() => {
     if (!confirmClear) return;
@@ -452,6 +483,11 @@ export function EnquiryDrawer() {
   };
 
   const beginPayment = async () => {
+    const live = await checkStoreOpenNow();
+    if (live.closed) {
+      sendBackToCart(live.reason);
+      return;
+    }
     if (customerData.deliveryType === "delivery") {
       const snap = customerData.addressSnapshot;
       if (!snap || (!snap.flat && !snap.street)) {
@@ -510,6 +546,13 @@ export function EnquiryDrawer() {
     }
     setPaying(true);
     try {
+      // Last look before anything is sent: has the store closed while the customer was on this screen?
+      const live = await checkStoreOpenNow();
+      if (live.closed) {
+        sendBackToCart(live.reason);
+        return;
+      }
+
       // Pay at handover: no payment step. The server creates the order as "Order received".
       if (method === "cash") {
         if (pendingOrderId) {
@@ -583,7 +626,13 @@ export function EnquiryDrawer() {
         toast.error("Payment was not completed. Your cart is safe — you can try again.");
       }
     } catch (err: any) {
-      toast.error(err?.message || "Something went wrong. Please try again.");
+      // The server is the final judge. If it refused because the store just closed, explain and go back.
+      const live = await checkStoreOpenNow();
+      if (live.closed) {
+        sendBackToCart(live.reason);
+      } else {
+        toast.error(err?.message || "Something went wrong. Please try again.");
+      }
     } finally {
       setPaying(false);
     }
@@ -686,14 +735,15 @@ export function EnquiryDrawer() {
 
         <div className="enq-scroll flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 py-6 sm:px-6 [scrollbar-gutter:stable_both-edges]">
           {/* ─────────────── CART ─────────────── */}
+          {store.closed && step !== "done" && (
+            <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-foreground">
+              <strong className="font-semibold">We're closed right now.</strong>{" "}
+              {store.reason || "Please check back soon."}
+            </div>
+          )}
+
           {step === "cart" && (
             <>
-              {store.closed && (
-                <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-foreground">
-                  <strong className="font-semibold">We're closed right now.</strong>{" "}
-                  {store.reason || "Please check back soon."}
-                </div>
-              )}
 
               <section aria-labelledby="enq-items">
                 <SectionHeading
@@ -1121,7 +1171,7 @@ export function EnquiryDrawer() {
                 <span className="text-sm text-muted-foreground">Total</span>
                 <span className="font-serif text-2xl tabular-nums text-foreground">{formatINR(grandTotal)}</span>
               </div>
-              <button type="button" onClick={beginPayment} disabled={!hasLines} className={primaryButton}>
+              <button type="button" onClick={beginPayment} disabled={!hasLines || store.closed} className={primaryButton}>
                 Continue to payment
                 <ChevronRight className="h-5 w-5" aria-hidden="true" />
               </button>
@@ -1137,7 +1187,7 @@ export function EnquiryDrawer() {
               <button
                 type="button"
                 onClick={handlePay}
-                disabled={paying || !!payUnavailable}
+                disabled={paying || !!payUnavailable || store.closed}
                 className={primaryButton}
               >
                 {paying ? (

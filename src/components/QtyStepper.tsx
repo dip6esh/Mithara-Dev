@@ -12,11 +12,14 @@ export function QtyStepper({
   onChange,
   label,
   min = 1,
+  blockIncrease = false,
 }: {
   value: number;
   onChange: (next: number) => void;
   label: string;
   min?: 0 | 1;
+  /** Shop closed: quantities can go down but not up. */
+  blockIncrease?: boolean;
 }) {
   const [text, setText] = React.useState(String(value));
   React.useEffect(() => setText(String(value)), [value]);
@@ -28,6 +31,10 @@ export function QtyStepper({
       return;
     }
     const next = Math.min(MAX_QTY, n);
+    if (blockIncrease && next > value) {
+      setText(String(value)); // closed: no increases
+      return;
+    }
     setText(String(next));
     if (next !== value) onChange(next);
   };
@@ -72,7 +79,7 @@ export function QtyStepper({
         type="button"
         className={btn}
         aria-label={`Increase quantity of ${label}`}
-        disabled={value >= MAX_QTY}
+        disabled={value >= MAX_QTY || blockIncrease}
         onClick={() => onChange(value + 1)}
       >
         <Plus className="h-4 w-4" aria-hidden="true" />

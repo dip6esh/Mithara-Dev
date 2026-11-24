@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Plus, ShoppingBag } from "lucide-react";
+import { Lock, Plus, ShoppingBag } from "lucide-react";
+import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { useEnquiry } from "./EnquiryProvider";
 import { QtyStepper } from "./QtyStepper";
@@ -25,7 +26,7 @@ export function EnquiryControl({
   category: string;
   className?: string;
 }) {
-  const { getQty, addLine, setQty, setOpen } = useEnquiry();
+  const { getQty, addLine, setQty, setOpen, storeClosed, storeClosedReason } = useEnquiry();
   const pricing = React.useMemo(() => parsePricing(price), [price]);
   const [popOpen, setPopOpen] = React.useState(false);
 
@@ -35,6 +36,8 @@ export function EnquiryControl({
   });
   const total = rows.reduce((s, r) => s + r.qty, 0);
   const quickAdd = !pricing.tiered && total === 0;
+  // Closed and nothing of this item in the cart yet: the button cannot add anything.
+  const locked = storeClosed && total === 0;
 
   const change = (r: (typeof rows)[number], next: number) => {
     if (next < 1) {
@@ -56,7 +59,9 @@ export function EnquiryControl({
   };
 
   const label =
-    total > 0
+    locked
+      ? `${name}: ordering is closed right now`
+      : total > 0
       ? `${name}: ${total} in your cart. Change quantity`
       : pricing.tiered
         ? `Choose a pack size and add ${name} to cart`
@@ -72,8 +77,16 @@ export function EnquiryControl({
           <button
             type="button"
             aria-label={label}
-            title={total > 0 ? "In your cart" : "Add to cart"}
+            title={locked ? "Closed for orders" : total > 0 ? "In your cart" : "Add to cart"}
+            aria-disabled={locked || undefined}
             onClick={(e) => {
+              if (locked) {
+                e.preventDefault(); // stops the popover opening
+                toast.error(storeClosedReason || "We are closed right now and not accepting orders.", {
+                  id: "store-closed",
+                });
+                return;
+              }
               if (!quickAdd) return; // opens the popover
               e.preventDefault(); // stops the popover opening
               const r = rows[0];
@@ -85,9 +98,11 @@ export function EnquiryControl({
                 unitPrice: r.option.amount,
               });
             }}
-            className="relative inline-flex h-11 w-11 items-center justify-center rounded-full bg-gradient-gold text-gold-foreground shadow-elegant ring-1 ring-black/10 transition-transform duration-200 hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-[#302844]"
+            className={`relative inline-flex h-11 w-11 items-center justify-center rounded-full bg-gradient-gold text-gold-foreground shadow-elegant ring-1 ring-black/10 transition-transform duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-[#302844] ${locked ? "cursor-not-allowed opacity-45 grayscale" : "hover:scale-105 active:scale-95"}`}
           >
-            {total > 0 ? (
+            {locked ? (
+              <Lock className="h-5 w-5" aria-hidden="true" />
+            ) : total > 0 ? (
               <ShoppingBag className="h-5 w-5" aria-hidden="true" />
             ) : (
               <Plus className="h-5 w-5" aria-hidden="true" />
@@ -119,6 +134,12 @@ export function EnquiryControl({
             </p>
           )}
 
+          {storeClosed && (
+            <p role="status" className="mt-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-foreground">
+              {storeClosedReason || "We are closed right now."} You can lower quantities, but not add more.
+            </p>
+          )}
+
           <ul className="mt-3 space-y-3">
             {rows.map((r) => {
               const rowLabel = r.option.label ? `${name}, ${r.option.label}` : name;
@@ -130,7 +151,13 @@ export function EnquiryControl({
                       <p className="text-xs text-muted-foreground">{formatINR(r.option.amount)}</p>
                     )}
                   </div>
-                  <QtyStepper min={0} value={r.qty} label={rowLabel} onChange={(n) => change(r, n)} />
+                  <QtyStepper
+                    min={0}
+                    value={r.qty}
+                    label={rowLabel}
+                    blockIncrease={storeClosed}
+                    onChange={(n) => change(r, n)}
+                  />
                 </li>
               );
             })}

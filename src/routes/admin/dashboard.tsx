@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useGreeting } from "@/hooks/useGreeting";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { supabase } from "../../lib/supabase";
 import { cacheGet, cacheSet, hasCache, useCachedState } from "../../lib/adminCache";
@@ -20,6 +21,8 @@ import {
 import { toast } from "sonner";
 import { CountUp } from "../../components/admin/CountUp";
 import { StatCard } from "../../components/admin/StatCard";
+import { refreshDailyStock } from "../../lib/dailyStock";
+import { LowStockPanel, refreshStockAlerts } from "../../components/admin/LowStockAlert";
 
 export const Route = createFileRoute("/admin/dashboard")({
   head: () => ({
@@ -93,6 +96,7 @@ function AdminDashboardPage() {
   const fetchData = async (silent = false) => {
     if (!silent) setIsLoading(true);
     try {
+      await refreshDailyStock(); // a new day starts with full stock
       // Orders and products are independent — fetch them at the same time.
       const [ordersRes, productsRes] = await Promise.all([
         supabase
@@ -106,6 +110,7 @@ function AdminDashboardPage() {
       if (productsRes.error) throw productsRes.error;
       setOrders(ordersRes.data || []);
       setProducts(productsRes.data || []);
+      void refreshStockAlerts();
     } catch (err: any) {
       console.error("Dashboard error:", err);
       if (!silent) toast.error("Failed to load dashboard metrics");
@@ -180,8 +185,7 @@ function AdminDashboardPage() {
     }
   };
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const greeting = useGreeting();
 
   return (
     <>
@@ -225,6 +229,9 @@ function AdminDashboardPage() {
             </Link>
           </div>
         </div>
+
+        {/* Items at or below their low-stock alert number (set per item in Menu Control) */}
+        <LowStockPanel />
 
         {/* Hero + stats */}
         <div className="grid gap-4 lg:grid-cols-12">

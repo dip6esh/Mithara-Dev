@@ -28,6 +28,8 @@ export type Product = {
   daily_stock: number | null;
   stock_remaining: number | null;
   stock_reset_at: string | null;
+  /** Migration 009. Warn when stock_remaining is at or below this. null / missing = no alert. */
+  low_stock_alert_at?: number | null;
   created_at: string;
   updated_at: string;
 };

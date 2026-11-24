@@ -12,6 +12,8 @@ import {
   type EnquiryForm,
   type EnquiryLine,
 } from "../lib/enquiry";
+import { isStoreClosed, useStoreSettings } from "../lib/settings";
+import { toast } from "sonner";
 
 type AddInput = {
   category: string;
@@ -29,6 +31,10 @@ type EnquiryContextValue = {
   estimate: number;
   hasUnpriced: boolean;
   hydrated: boolean;
+  /** True while the shop is closed for orders (holiday mode, or outside the order window). */
+  storeClosed: boolean;
+  /** Why it is closed, ready to show the customer. Empty when open. */
+  storeClosedReason: string;
 
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -60,6 +66,20 @@ export function EnquiryProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
   const [announcement, setAnnouncement] = React.useState("");
 
+  // Live "is the shop closed?" status. Settings update on their own (see useStoreSettings); the clock
+  // tick re-evaluates the cutoff time, which changes without any settings change.
+  const settings = useStoreSettings();
+  const [clock, setClock] = React.useState(0);
+  React.useEffect(() => {
+    const t = window.setInterval(() => setClock((c) => c + 1), 15000);
+    return () => window.clearInterval(t);
+  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const store = React.useMemo(() => isStoreClosed(settings), [settings, clock]);
+  // Always-fresh copy for the add / quantity handlers, so they judge the moment of the tap.
+  const settingsRef = React.useRef(settings);
+  settingsRef.current = settings;
+
   // Load once after mount.
   React.useEffect(() => {
     const stored = loadStored();
@@ -80,12 +100,23 @@ export function EnquiryProvider({ children }: { children: React.ReactNode }) {
     setAnnouncement((prev) => (prev === msg ? msg + "\u00a0" : msg));
   }, []);
 
+  /** True (and tells the customer why) when the shop is closed right now. Judges the moment of the tap. */
+  const refuseIfClosed = React.useCallback((): boolean => {
+    const live = isStoreClosed(settingsRef.current);
+    if (!live.closed) return false;
+    const msg = live.reason || "We are closed right now and not accepting orders.";
+    toast.error(msg, { id: "store-closed" });
+    announce(msg);
+    return true;
+  }, [announce]);
+
   // Latest list for announcements only. State updates below stay purely functional.
   const linesRef = React.useRef(lines);
   linesRef.current = lines;
 
   const addLine = React.useCallback(
     (input: AddInput) => {
+      if (refuseIfClosed()) return;
       const key = makeKey(input.category, input.name, input.variantId);
       const current = linesRef.current;
       const existing = current.find((l) => l.key === key);
@@ -122,16 +153,22 @@ export function EnquiryProvider({ children }: { children: React.ReactNode }) {
           : `Added ${input.name} to your enquiry list`,
       );
     },
-    [announce],
+    [announce, refuseIfClosed],
   );
 
-  const setQty = React.useCallback((key: string, qty: number) => {
-    setLines((prev) =>
-      qty < 1
-        ? prev.filter((l) => l.key !== key)
-        : prev.map((l) => (l.key === key ? { ...l, qty: clampQty(qty) } : l)),
-    );
-  }, []);
+  const setQty = React.useCallback(
+    (key: string, qty: number) => {
+      // While closed the customer may still lower quantities or remove items, but not add more.
+      const existing = linesRef.current.find((l) => l.key === key);
+      if (existing && qty > existing.qty && refuseIfClosed()) return;
+      setLines((prev) =>
+        qty < 1
+          ? prev.filter((l) => l.key !== key)
+          : prev.map((l) => (l.key === key ? { ...l, qty: clampQty(qty) } : l)),
+      );
+    },
+    [refuseIfClosed],
+  );
 
   const setNote = React.useCallback((key: string, note: string) => {
     const value = note.replace(/[\r\n]+/g, " ").slice(0, MAX_ITEM_NOTE);
@@ -164,6 +201,8 @@ export function EnquiryProvider({ children }: { children: React.ReactNode }) {
       estimate: total,
       hasUnpriced,
       hydrated,
+      storeClosed: store.closed,
+      storeClosedReason: store.reason,
       open,
       setOpen,
       getQty: (key) => qtyByKey.get(key) ?? 0,
@@ -175,7 +214,7 @@ export function EnquiryProvider({ children }: { children: React.ReactNode }) {
       form,
       updateForm,
     };
-  }, [lines, hydrated, open, form, addLine, setQty, setNote, removeLine, clearAll, updateForm]);
+  }, [lines, hydrated, store.closed, store.reason, open, form, addLine, setQty, setNote, removeLine, clearAll, updateForm]);
 
   return (
     <EnquiryContext.Provider value={value}>

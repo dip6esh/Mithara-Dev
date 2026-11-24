@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ChevronDown, Download, ExternalLink, FileText, FlaskConical, RefreshCw, Search } from "lucide-react";
+import { Banknote, ChevronDown, CreditCard, Download, ExternalLink, FileText, RefreshCw, Search } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { cacheGet, cacheSet, hasCache, useCachedState } from "../../lib/adminCache";
 import {
@@ -25,6 +25,14 @@ const fmt = (iso: string) =>
 
 /** Today's date as YYYY-MM-DD in Indian time. */
 const istDay = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+/**
+ * Which tab an invoice belongs to.
+ * Today every online payment is a simulated (demo) one, flagged `is_test`, and cash is always real.
+ * When a real payment gateway goes live, online invoices will no longer be `is_test`:
+ * change this one line to classify by payment method instead (invoice.data.payment.method !== "cash").
+ */
+const isOnline = (r: Pick<InvoiceSummary, "is_test">) => r.is_test;
 
 type Range = "all" | "today" | "week" | "month" | "custom";
 
@@ -55,8 +63,8 @@ function AdminInvoicesPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "tax_invoice" | "bill_of_supply">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "issued" | "void">("all");
-  // "Real" = money actually received. "Practice" = simulated online payments (demo mode).
-  const [tab, setTab] = useState<"real" | "practice">("real");
+  // "Cash" = collected at handover. "Online" = paid through the website at checkout.
+  const [tab, setTab] = useState<"cash" | "online">("cash");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [range, setRange] = useState<Range>("all");
@@ -106,7 +114,7 @@ function AdminInvoicesPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
-      if (tab === "practice" ? !r.is_test : r.is_test) return false;
+      if (tab === "online" ? !isOnline(r) : isOnline(r)) return false;
       if (typeFilter !== "all" && r.doc_type !== typeFilter) return false;
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
       // Date filter compares IST calendar days.
@@ -120,8 +128,8 @@ function AdminInvoicesPage() {
 
   const tabCounts = useMemo(
     () => ({
-      real: rows.filter((r) => !r.is_test).length,
-      practice: rows.filter((r) => r.is_test).length,
+      cash: rows.filter((r) => !isOnline(r)).length,
+      online: rows.filter((r) => isOnline(r)).length,
     }),
     [rows],
   );
@@ -138,7 +146,7 @@ function AdminInvoicesPage() {
 
   const exportCsv = () => {
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-    const header = ["Invoice no", "Date", "Order no", "Customer", "Document", "Status", "Practice", "Total (INR)", "Tax (INR)"];
+    const header = ["Invoice no", "Date", "Order no", "Customer", "Document", "Status", "Payment", "Total (INR)", "Tax (INR)"];
     const lines = filtered.map((r) =>
       [
         r.invoice_number,
@@ -147,7 +155,7 @@ function AdminInvoicesPage() {
         r.customer_name,
         DOC_LABEL[r.doc_type],
         STATUS_LABEL[r.status],
-        r.is_test ? "yes" : "no",
+        isOnline(r) ? "Online" : "Cash",
         r.total_inr,
         r.tax_inr,
       ]
@@ -158,7 +166,7 @@ function AdminInvoicesPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `mithara_invoices_${tab === "practice" ? "practice_" : ""}${istDay(new Date())}.csv`;
+    a.download = `mithara_invoices_${tab}_${istDay(new Date())}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -199,11 +207,11 @@ function AdminInvoicesPage() {
           </div>
         </div>
 
-        {/* Real / Practice tabs */}
+        {/* Cash / Online tabs */}
         <div className="flex flex-wrap items-center gap-2">
           {([
-            { id: "real", label: "Real invoices", count: tabCounts.real },
-            { id: "practice", label: "Practice", count: tabCounts.practice },
+            { id: "cash", label: "Cash", count: tabCounts.cash, Icon: Banknote },
+            { id: "online", label: "Online", count: tabCounts.online, Icon: CreditCard },
           ] as const).map((t) => (
             <button
               key={t.id}
@@ -214,24 +222,24 @@ function AdminInvoicesPage() {
                   : "border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-neutral-200"
               }`}
             >
-              {t.id === "practice" && <FlaskConical className="h-3.5 w-3.5" />}
+              <t.Icon className="h-3.5 w-3.5" />
               {t.label}
               <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-[10px] text-neutral-300">{t.count}</span>
             </button>
           ))}
         </div>
 
-        {tab === "practice" && (
+        {tab === "online" && (
           <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
-            <span className="font-semibold">Practice mode.</span> These come from simulated online payments, where no
-            real money was taken. They are not valid tax documents.
+            <span className="font-semibold">Demo payments.</span> Online payments are simulated in this preview, so no
+            real money is taken and these are not valid tax documents.
           </div>
         )}
 
         {/* Summary */}
         <div className="grid gap-3 sm:grid-cols-3">
           {[
-            { label: tab === "practice" ? "Practice invoices" : "Invoices", value: String(totals.count) },
+            { label: tab === "online" ? "Online invoices" : "Cash invoices", value: String(totals.count) },
             { label: "Invoiced value", value: money(totals.value) },
             { label: "Tax charged", value: money(totals.tax) },
           ].map((c) => (
@@ -363,9 +371,9 @@ function AdminInvoicesPage() {
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-neutral-500">
                       {tabCounts[tab] === 0
-                        ? tab === "practice"
-                          ? "No practice invoices. They appear when a customer pays online while the shop is in practice mode."
-                          : "No invoices yet. One is created as soon as an order is paid."
+                        ? tab === "online"
+                          ? "No online invoices yet. One is created when a customer pays online at checkout."
+                          : "No cash invoices yet. One is created when you mark cash or UPI received at handover."
                         : "No invoices match these filters."}
                     </td>
                   </tr>

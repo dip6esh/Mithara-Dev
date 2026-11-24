@@ -116,7 +116,7 @@ function InvoicePage() {
                 isVoid ? "text-rose-600/15" : "text-amber-600/15"
               }`}
             >
-              {isVoid ? "Cancelled" : "Practice invoice"}
+              {isVoid ? "Cancelled" : "Demo invoice"}
             </span>
           </div>
         )}
@@ -162,7 +162,7 @@ function InvoicePage() {
             )}
             {invoice.is_test && !isVoid && (
               <p className="mt-2 inline-block rounded bg-amber-100 px-2 py-0.5 font-bold uppercase text-amber-800">
-                Practice payment — not a valid tax document
+                Demo payment — not a valid tax document
               </p>
             )}
           </div>

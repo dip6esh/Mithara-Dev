@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { supabase } from "../../lib/supabase";
+import { primeAuth } from "../../lib/auth";
 import {
   Lock,
   Mail,
@@ -55,17 +56,27 @@ function CustomerAuthPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   // Send the visitor back to where they came from (e.g. to finish checkout).
-  const finish = () => {
+  // In-app navigation (no full page reload): the cart lives in localStorage, so it survives the switch.
+  const finish = async () => {
     if (redirect && redirect.startsWith("/")) {
-      window.location.assign(redirect);
+      router.history.push(redirect);
     } else {
-      router.navigate({ to: "/account/profile" });
+      // Load the profile page's code first (the button keeps its spinner) so the switch is one step.
+      try {
+        await router.preloadRoute({ to: "/account/profile" });
+      } catch {
+        /* navigating below still works, just without the head start */
+      }
+      await router.navigate({ to: "/account/profile", replace: true });
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    // Once sign-in succeeds we keep the spinner on until the next page takes over,
+    // so the button never flips back to "Sign in" while the page is still loading.
+    let navigating = false;
 
     try {
       if (isSignUp) {
@@ -103,22 +114,28 @@ function CustomerAuthPage() {
           if (profileError) throw profileError;
         }
 
+        primeAuth(data.session);
         toast.success("Account created successfully!");
-        finish();
+        navigating = true;
+        await finish();
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
         });
 
         if (error) throw error;
+        // Tell the whole app about the new session right away, so the next page doesn't
+        // start from a "still checking" state and wait for the auth listener to catch up.
+        primeAuth(data.session);
         toast.success("Welcome back to Mithara!");
-        finish();
+        navigating = true;
+        await finish();
       }
     } catch (err: any) {
       toast.error(err.message || "Authentication failed");
     } finally {
-      setIsLoading(false);
+      if (!navigating) setIsLoading(false);
     }
   };
 

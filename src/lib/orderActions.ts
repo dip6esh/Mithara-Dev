@@ -11,6 +11,7 @@ import type { Order, PaidVia } from "./types";
 export type PendingAction =
   | { kind: "handover_paid"; order: Order }
   | { kind: "collect"; order: Order; via: PaidVia }
+  | { kind: "record_payment"; order: Order; via: PaidVia }
   | { kind: "cancel"; order: Order }
   | { kind: "undo_payment"; order: Order }
   | { kind: "restore"; order: Order }
@@ -40,6 +41,9 @@ export function describeAction(a: PendingAction, inv: InvoiceSummary | undefined
         effects: [
           "The order moves to “Handed over”.",
           ...(invoiceNo ? [`Invoice ${invoiceNo} stays as it is.`] : []),
+          ...(o.kitchen_status !== "ready"
+            ? ["Heads up: the kitchen has not marked this order ready yet. Check it is finished before handing it over."]
+            : []),
         ],
         confirmLabel: "Yes, handed over",
         cancelLabel: "Not yet",
@@ -54,6 +58,22 @@ export function describeAction(a: PendingAction, inv: InvoiceSummary | undefined
         effects: [
           "The order moves to “Handed over”.",
           `The payment is recorded as ${how}.`,
+          `An invoice is created right now (${docWord}). The customer can see it in their account.`,
+        ],
+        confirmLabel: "Yes, money received",
+        cancelLabel: "Go back",
+        tone: "default",
+      };
+    }
+
+    case "record_payment": {
+      const how = PAID_VIA_LABEL[a.via];
+      return {
+        title: `Received ${formatINR(o.total_inr)} by ${how.toLowerCase()}?`,
+        intro: "Only confirm once the money is in your hand or your account.",
+        effects: [
+          `The payment is recorded as ${how}.`,
+          "The order stays in “Order received” and stays on the Kitchen board until you hand it over.",
           `An invoice is created right now (${docWord}). The customer can see it in their account.`,
         ],
         confirmLabel: "Yes, money received",

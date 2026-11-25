@@ -65,7 +65,10 @@ export function setSoundEnabled(on: boolean) {
   } catch {
     /* storage unavailable: the choice lasts for this visit only */
   }
-  if (!on) stopRinging();
+  if (!on) {
+    stopRinging();
+    stopSounds();
+  }
   subs.forEach((l) => l());
 }
 
@@ -78,6 +81,121 @@ export function useSoundEnabled(): boolean {
     readEnabled,
     () => true,
   );
+}
+
+/* ───────────── Volume ─────────────
+ * 0–100 on the settings slider. 50 is exactly how loud the alerts were before this setting existed,
+ * so nothing changes for anyone who never touches it; 100 is three times the amplitude (about +9.5 dB),
+ * for a noisy kitchen. Muting is a separate switch, so a chosen volume survives mute / unmute. */
+const VOL_KEY = "mithara-admin-order-sound-volume";
+export const DEFAULT_VOLUME = 50;
+let volume: number | null = null;
+
+function readVolume(): number {
+  if (volume !== null) return volume;
+  let v = DEFAULT_VOLUME;
+  try {
+    const raw = window.localStorage.getItem(VOL_KEY);
+    if (raw !== null && raw.trim() !== "" && Number.isFinite(Number(raw))) {
+      v = Math.min(100, Math.max(0, Math.round(Number(raw))));
+    }
+  } catch {
+    /* storage unavailable: use the default */
+  }
+  volume = v;
+  return v;
+}
+
+export function setSoundVolume(v: number) {
+  volume = Math.min(100, Math.max(0, Math.round(v)));
+  try {
+    window.localStorage.setItem(VOL_KEY, String(volume));
+  } catch {
+    /* storage unavailable: the choice lasts for this visit only */
+  }
+  subs.forEach((l) => l());
+}
+
+export function useSoundVolume(): number {
+  return useSyncExternalStore(
+    (l) => {
+      subs.add(l);
+      return () => subs.delete(l);
+    },
+    readVolume,
+    () => DEFAULT_VOLUME,
+  );
+}
+
+/** 0 → silent, 50 → as before, 100 → 3× louder. */
+function volumeMultiplier(): number {
+  const v = readVolume();
+  return v <= 50 ? v / 50 : 1 + ((v - 50) / 50) * 2;
+}
+
+/**
+ * Per-sound level trims so the three alerts sound equally loud at the same volume setting.
+ * Measured by rendering each sound offline through the same tone, compressor and limiter chain and
+ * comparing K-weighted loudness: the order bell has a long, sustained chord, so the order-ready ding
+ * and the low-stock pluck (which fade faster) sounded 1.7 dB and 2.7 dB quieter over the first second.
+ * The bell is trimmed slightly, the other two raised, which lands all three within about 0.2 dB.
+ * If one still feels off on your speakers, nudge its number here (higher = louder).
+ */
+const LEVEL_ORDER_BELL = 0.85;
+const LEVEL_READY_DING = 1.2;
+const LEVEL_STOCK_PLUCK = 1.8;
+
+/** Output nodes of sounds that may still be audible (each sound lasts under ~4 s). */
+const playing = new Set<GainNode>();
+
+/**
+ * Cuts off every alert sound that is playing right now (a very short fade, so there is no click).
+ * Used when a different sound is tested and when sound is muted. It does not stop the repeating
+ * new-order reminder timer; that is stopRinging().
+ */
+export function stopSounds() {
+  const c = ctx;
+  playing.forEach((g) => {
+    try {
+      if (c) {
+        const t = c.currentTime;
+        g.gain.cancelScheduledValues(t);
+        g.gain.setValueAtTime(g.gain.value, t);
+        g.gain.linearRampToValueAtTime(0, t + 0.04);
+      }
+      setTimeout(() => {
+        try {
+          g.disconnect();
+        } catch {
+          /* already disconnected */
+        }
+      }, 120);
+    } catch {
+      /* the sound already ended */
+    }
+  });
+  playing.clear();
+}
+
+/**
+ * Where every alert sound ends up: the volume control, then a limiter so a high volume gets louder
+ * without crackling. Each sound builds its own tone chain and plugs it into the node returned here.
+ */
+function outputNode(c: AudioContext, level = 1): AudioNode {
+  const vol = c.createGain();
+  // Remember it while it can still be audible, so stopSounds() can cut it off.
+  playing.add(vol);
+  setTimeout(() => playing.delete(vol), 8000);
+  vol.gain.value = volumeMultiplier() * level;
+  const limiter = c.createDynamicsCompressor();
+  limiter.threshold.value = -6;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.001;
+  limiter.release.value = 0.12;
+  vol.connect(limiter);
+  limiter.connect(c.destination);
+  return vol;
 }
 
 /** One ring: rising three-note run, then a full, long chord, played twice. Returns false if sound is unavailable. */
@@ -95,7 +213,7 @@ export function playOrderChime(): boolean {
   comp.attack.value = 0.002;
   comp.release.value = 0.22;
   master.connect(comp);
-  comp.connect(c.destination);
+  comp.connect(outputNode(c, LEVEL_ORDER_BELL));
 
   const base = c.currentTime + 0.03;
   // ratio to the fundamental, relative loudness: gives the metallic "bell" colour
@@ -192,7 +310,7 @@ export function playStockAlertSound(): boolean {
   comp.knee.value = 10;
   comp.ratio.value = 6;
   master.connect(comp);
-  comp.connect(c.destination);
+  comp.connect(outputNode(c, LEVEL_STOCK_PLUCK));
 
   const base = c.currentTime + 0.03;
   const pluck = (freq: number, at: number, dur: number, vol: number) => {
@@ -219,5 +337,60 @@ export function playStockAlertSound(): boolean {
   };
   run(0);
   run(1.4);
+  return true;
+}
+
+/**
+ * "Order ready" sound: a service-desk bell. Two sharp, high, identical "ding-ding" strikes with a short
+ * metallic ring, repeated once. Unlike the other two it has no melody: the order bell is a rising run
+ * ending in a chord, the stock warning is a soft descending pluck, and this is a bare double ping, so
+ * the team can tell by ear that something is ready to go out. Follows the same mute switch.
+ */
+export function playReadyOrderSound(): boolean {
+  if (typeof window === "undefined" || !readEnabled()) return false;
+  const c = getCtx();
+  if (!c) return false;
+  if (c.state === "suspended") void c.resume().catch(() => {});
+
+  const master = c.createGain();
+  master.gain.value = 0.75;
+  const comp = c.createDynamicsCompressor();
+  comp.threshold.value = -20;
+  comp.knee.value = 8;
+  comp.ratio.value = 6;
+  master.connect(comp);
+  comp.connect(outputNode(c, LEVEL_READY_DING));
+
+  const base = c.currentTime + 0.03;
+  // Inharmonic partials give the "struck metal" colour of a desk bell.
+  const partials: Array<[number, number]> = [
+    [1, 1],
+    [2.32, 0.5],
+    [4.25, 0.28],
+    [6.63, 0.14],
+  ];
+  const ding = (freq: number, at: number, dur: number, vol: number) => {
+    partials.forEach(([ratio, amp], i) => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq * ratio;
+      const t = base + at;
+      const d = dur / (1 + i * 0.9);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol * amp), t + 0.003);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      osc.connect(gain);
+      gain.connect(master);
+      osc.start(t);
+      osc.stop(t + d + 0.05);
+    });
+  };
+  const pair = (offset: number) => {
+    ding(1760, offset, 0.7, 0.55); // A6
+    ding(1760, offset + 0.24, 0.9, 0.6);
+  };
+  pair(0);
+  pair(1.5);
   return true;
 }

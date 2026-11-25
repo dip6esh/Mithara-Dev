@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
   ChefHat,
+  ChevronDown,
+  ChevronUp,
   Clock,
   CookingPot,
   PackageCheck,
@@ -22,10 +24,12 @@ import {
   minutesSince,
   nextKitchenStatus,
   prevKitchenStatus,
+  readyLabel,
   timerStart,
-  toMakeNow,
   type AgeTone,
 } from "../../lib/kitchen";
+import { formatINR } from "../../lib/enquiry";
+import { paymentSummary } from "../../lib/orderFlow";
 import type { KitchenStatus, Order } from "../../lib/types";
 
 export const Route = createFileRoute("/admin/kitchen")({
@@ -35,37 +39,77 @@ export const Route = createFileRoute("/admin/kitchen")({
   component: KitchenPage,
 });
 
-const COLUMN_META: Record<
+/**
+ * One colour per stage, used everywhere (tab, column, ticket, button) so the stage is readable at a glance:
+ *   New = gold · Preparing = violet · Ready = green.
+ * Lateness is a separate signal (the timer chip, plus a red ring when very late), so it never gets
+ * confused with the stage colour.
+ */
+const STAGE: Record<
   KitchenStatus,
-  { hint: string; icon: React.ComponentType<{ className?: string }>; head: string; dot: string; empty: string }
+  {
+    hint: string;
+    empty: string;
+    icon: React.ComponentType<{ className?: string }>;
+    column: string; // column background + border (kept neutral: the colour lives on the tickets)
+    head: string; // column title colour
+    dot: string; // small dot / accent bar
+    count: string; // count badge
+    band: string; // solid colour header band of the ticket
+    tabOn: string; // active tab
+    tabOff: string; // inactive tab (dot keeps the colour)
+    action: string; // main action button
+    qty: string; // quantity colour on the ticket
+  }
 > = {
   new: {
     hint: "Just received",
-    icon: UtensilsCrossed,
-    head: "text-[#a8691d]",
-    dot: "bg-[#d39c54]",
     empty: "No new orders. Nice and quiet.",
+    icon: UtensilsCrossed,
+    column: "border-border bg-muted/40",
+    head: "text-[#8a5517]",
+    dot: "bg-[#d39c54]",
+    count: "bg-[#d39c54] text-[#1c1733]",
+    band: "bg-[#d39c54] text-[#1c1733]",
+    tabOn: "border-[#d39c54] bg-[#d39c54]/20 text-[#7d4d12]",
+    tabOff: "border-border bg-card text-muted-foreground",
+    action: "bg-[#6d5fb3] text-white hover:bg-[#5c4fa0]",
+    qty: "text-[#a8691d]",
   },
   preparing: {
     hint: "On the counter",
-    icon: CookingPot,
-    head: "text-[#282345]",
-    dot: "bg-[#6d5fb3]",
     empty: "Nothing being prepared right now.",
+    icon: CookingPot,
+    column: "border-border bg-muted/40",
+    head: "text-[#4a3f8f]",
+    dot: "bg-[#6d5fb3]",
+    count: "bg-[#6d5fb3] text-white",
+    band: "bg-[#6d5fb3] text-white",
+    tabOn: "border-[#6d5fb3] bg-[#6d5fb3]/15 text-[#4a3f8f]",
+    tabOff: "border-border bg-card text-muted-foreground",
+    action: "bg-emerald-600 text-white hover:bg-emerald-700",
+    qty: "text-[#5c4fa0]",
   },
   ready: {
     hint: "Waiting for handover",
-    icon: PackageCheck,
-    head: "text-emerald-700",
-    dot: "bg-emerald-500",
     empty: "No orders waiting to be handed over.",
+    icon: PackageCheck,
+    column: "border-border bg-muted/40",
+    head: "text-emerald-800",
+    dot: "bg-emerald-500",
+    count: "bg-emerald-600 text-white",
+    band: "bg-emerald-600 text-white",
+    tabOn: "border-emerald-500 bg-emerald-500/15 text-emerald-800",
+    tabOff: "border-border bg-card text-muted-foreground",
+    action: "border border-emerald-600/30 bg-emerald-50 text-emerald-800",
+    qty: "text-emerald-700",
   },
 };
 
 const AGE_CLASS: Record<AgeTone, string> = {
-  fresh: "bg-emerald-500/10 text-emerald-700",
-  late: "bg-amber-500/15 text-amber-700",
-  "very-late": "bg-rose-500/15 text-rose-700 animate-pulse",
+  fresh: "bg-black/15",
+  late: "bg-white text-amber-700",
+  "very-late": "bg-rose-600 text-white ring-2 ring-white animate-pulse",
 };
 
 function KitchenPage() {
@@ -86,13 +130,23 @@ function KitchenPage() {
     return by;
   }, [orders]);
 
-  const makeNow = useMemo(() => toMakeNow(orders), [orders]);
+  // Very late tickets per stage ("Ready" never raises an alarm: it only waits for the customer).
+  const lateCount = useMemo(() => {
+    const out: Record<KitchenStatus, number> = { new: 0, preparing: 0, ready: 0 };
+    for (const s of ["new", "preparing"] as const) {
+      out[s] = columns[s].filter((o) => ageTone(minutesSince(timerStart(o), now)) === "very-late").length;
+    }
+    return out;
+  }, [columns, now]);
+
   const open = counts.new + counts.preparing + counts.ready;
 
   return (
-    <div className="adm-stagger space-y-6">
+    // On large screens the board fills the screen and each column scrolls on its own, so a long queue in
+    // one stage never pushes the other stages out of view. Phones/tablets keep the one-stage-at-a-time tabs.
+    <div className="adm-stagger space-y-4 lg:flex lg:h-[calc(100dvh-8rem)] lg:min-h-[34rem] lg:flex-col">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between lg:shrink-0">
         <div>
           <p className="text-xs font-medium text-muted-foreground">Kitchen display</p>
           <h1 className="mt-1 flex items-center gap-2 font-serif text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
@@ -117,43 +171,34 @@ function KitchenPage() {
         </div>
       </div>
 
-      {/* To make now */}
-      {makeNow.length > 0 && (
-        <section className="rounded-3xl border border-border bg-card p-4 shadow-sm sm:p-5" aria-label="To make now">
-          <h2 className="text-xs font-semibold tracking-[0.16em] text-muted-foreground uppercase">To make now</h2>
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {makeNow.map((m) => (
-              <li
-                key={m.key}
-                className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-sm"
-              >
-                <span className="font-serif text-base font-bold text-[#a8691d]">{m.qty}×</span>
-                <span className="font-medium text-foreground">{m.name}</span>
-                {m.variant && <span className="text-xs text-muted-foreground">({m.variant})</span>}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
       {/* Mobile / tablet: one column at a time */}
       <div className="grid grid-cols-3 gap-2 lg:hidden" role="tablist" aria-label="Kitchen stage">
-        {KITCHEN_STEPS.map((s) => (
-          <button
-            key={s}
-            role="tab"
-            aria-selected={tab === s}
-            onClick={() => setTab(s)}
-            className={`rounded-2xl border px-3 py-3 text-sm font-semibold transition-colors ${
-              tab === s
-                ? "border-[#d39c54] bg-[#d39c54]/15 text-[#7d4d12]"
-                : "border-border bg-card text-muted-foreground"
-            }`}
-          >
-            {KITCHEN_LABEL[s]}
-            <span className="ml-1.5 rounded-full bg-black/5 px-1.5 py-0.5 text-[11px]">{counts[s]}</span>
-          </button>
-        ))}
+        {KITCHEN_STEPS.map((s) => {
+          const st = STAGE[s];
+          return (
+            <button
+              key={s}
+              role="tab"
+              aria-selected={tab === s}
+              onClick={() => setTab(s)}
+              className={`relative rounded-2xl border px-2 py-3 text-sm font-semibold transition-colors ${
+                tab === s ? st.tabOn : st.tabOff
+              }`}
+            >
+              <span className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${st.dot}`} aria-hidden="true" />
+              {KITCHEN_LABEL[s]}
+              <span className="ml-1.5 rounded-full bg-black/5 px-1.5 py-0.5 text-[11px]">{counts[s]}</span>
+              {lateCount[s] > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 flex h-5 min-w-5 animate-pulse items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white"
+                  title={`${lateCount[s]} very late`}
+                >
+                  {lateCount[s]}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Board */}
@@ -164,36 +209,46 @@ function KitchenPage() {
           ))}
         </div>
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-3">
+        <div className="grid items-start gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-3 lg:grid-rows-[minmax(0,1fr)] lg:items-stretch">
           {KITCHEN_STEPS.map((s) => {
-            const meta = COLUMN_META[s];
-            const Icon = meta.icon;
+            const st = STAGE[s];
+            const Icon = st.icon;
             return (
               <section
                 key={s}
                 aria-label={KITCHEN_LABEL[s]}
-                className={`${tab === s ? "block" : "hidden"} rounded-3xl border border-border bg-muted/40 p-3 lg:block sm:p-4`}
+                className={`${tab === s ? "flex" : "hidden"} min-h-0 flex-col rounded-3xl border p-3 sm:p-4 lg:flex ${st.column}`}
               >
-                <header className="mb-3 hidden items-center justify-between px-1 lg:flex">
+                <header className="mb-1 hidden items-center justify-between px-1 lg:flex">
                   <div className="flex items-center gap-2">
-                    <span className={`h-2.5 w-2.5 rounded-full ${meta.dot}`} aria-hidden="true" />
-                    <h2 className={`flex items-center gap-1.5 font-serif text-lg font-semibold ${meta.head}`}>
+                    <span className={`h-2.5 w-2.5 rounded-full ${st.dot}`} aria-hidden="true" />
+                    <h2 className={`flex items-center gap-1.5 font-serif text-lg font-semibold ${st.head}`}>
                       <Icon className="h-4 w-4" aria-hidden="true" />
                       {KITCHEN_LABEL[s]}
                     </h2>
                   </div>
-                  <span className="rounded-full bg-card px-2.5 py-0.5 text-xs font-semibold text-foreground shadow-sm">
-                    {columns[s].length}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {lateCount[s] > 0 && (
+                      <span className="animate-pulse rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                        {lateCount[s]} late
+                      </span>
+                    )}
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold shadow-sm ${st.count}`}>
+                      {columns[s].length}
+                    </span>
+                  </div>
                 </header>
-                <p className="mb-3 hidden px-1 text-xs text-muted-foreground lg:block">{meta.hint}</p>
+                <p className="mb-3 hidden px-1 text-xs text-muted-foreground lg:block">{st.hint}</p>
 
                 {columns[s].length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-                    {meta.empty}
+                  <div className="rounded-2xl border border-dashed border-border bg-card/50 px-4 py-10 text-center text-sm text-muted-foreground">
+                    {st.empty}
                   </div>
                 ) : (
-                  <ul className="space-y-3">
+                  // The list scrolls inside its own column on large screens (header above stays put).
+                  // Padding on every side (cancelled out by the negative margins) gives the red "very late" ring
+                  // room to draw; without it the scrolling list clips the ring on the left and top.
+                  <ul className="kd-scroll space-y-3 lg:-mx-2 lg:-mt-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:px-2 lg:py-1">
                     {columns[s].map((o) => (
                       <Ticket
                         key={o.id}
@@ -228,6 +283,11 @@ function Ticket({
   busy: boolean;
   onMove: (next: KitchenStatus) => void;
 }) {
+  const st = STAGE[status];
+  // "Ready" tickets are collapsed to a slim card (they only wait for the customer); tap to see the items.
+  const [expanded, setExpanded] = useState(false);
+  const collapsed = status === "ready" && !expanded;
+
   const mins = minutesSince(timerStart(order), now);
   // "Ready" tickets are only waiting for the customer: a plain timer, no alarm colours.
   const tone: AgeTone = status === "ready" ? "fresh" : ageTone(mins);
@@ -236,102 +296,191 @@ function Ticket({
   const pickup = order.delivery_type === "pickup";
   const items = order.order_items ?? [];
 
-  return (
-    <li
-      className={`rounded-2xl border bg-card p-4 shadow-sm ${
-        tone === "very-late" ? "border-rose-300" : tone === "late" ? "border-amber-300" : "border-border"
+  const typeBadge = (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold ${
+        pickup ? "text-sky-700" : "text-[#282345]"
       }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-serif text-lg leading-tight font-semibold text-foreground">#{order.order_number}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{order.customer_name}</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${AGE_CLASS[tone]}`}
-            title={status === "new" ? "Time since the order arrived" : "Time in this stage"}
-          >
-            <Clock className="h-3 w-3" aria-hidden="true" />
-            {formatAge(mins)}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-full bg-[#282345]/8 px-2 py-0.5 text-[11px] font-medium text-[#282345]">
-            {pickup ? <Store className="h-3 w-3" aria-hidden="true" /> : <Truck className="h-3 w-3" aria-hidden="true" />}
-            {pickup ? "Pickup" : "Delivery"}
-          </span>
-        </div>
+      {pickup ? <Store className="h-3 w-3" aria-hidden="true" /> : <Truck className="h-3 w-3" aria-hidden="true" />}
+      {pickup ? "Pickup" : "Delivery"}
+    </span>
+  );
+
+  const ageChip = (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${AGE_CLASS[tone]}`}
+      title={status === "new" ? "Time since the order arrived" : "Time in this stage"}
+    >
+      <Clock className="h-3 w-3" aria-hidden="true" />
+      {formatAge(mins)}
+    </span>
+  );
+
+  // Paid or still to collect, so whoever hands the order over knows whether to ask for money.
+  const pay = paymentSummary(order);
+  // A small, quiet tag: white with a hairline border and a status dot. Colour is limited to the dot,
+  // so it reads as information rather than a sticker. Unpaid shows the amount in bold, since that is
+  // the number whoever hands the order over needs.
+  const isPaid = pay.tone === "paid";
+  const payPill = (
+    <span className="inline-flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs leading-none">
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${isPaid ? "bg-emerald-500" : "bg-amber-500"}`}
+        aria-hidden="true"
+      />
+      {isPaid ? (
+        <span className="font-medium text-foreground">{pay.label}</span>
+      ) : (
+        <>
+          <span className="font-medium uppercase tracking-wider text-muted-foreground">Collect</span>
+          <span className="font-semibold tabular-nums text-foreground">{formatINR(order.total_inr)}</span>
+        </>
+      )}
+    </span>
+  );
+
+  const backBtn = prev && (
+    <button
+      onClick={() => onMove(prev)}
+      disabled={busy}
+      aria-label={`Move back to ${KITCHEN_LABEL[prev]}`}
+      title={`Back to ${KITCHEN_LABEL[prev]}`}
+      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-colors hover:border-[#d39c54] hover:text-foreground disabled:opacity-60"
+    >
+      <Undo2 className="h-4 w-4" />
+    </button>
+  );
+
+  // White card, solid colour header band: the stage colour pops against the clean background.
+  const shell = `overflow-hidden rounded-2xl border border-border bg-card shadow-sm ${
+    tone === "very-late" ? "border-rose-500 ring-2 ring-rose-500" : ""
+  }`;
+
+  const band = (
+    <div className={`flex items-start justify-between gap-3 px-4 py-3 ${st.band}`}>
+      <div className="min-w-0">
+        <p className="font-serif text-lg leading-tight font-semibold">#{order.order_number}</p>
+        <p className="mt-0.5 truncate text-xs opacity-80">{order.customer_name}</p>
       </div>
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        {ageChip}
+        {typeBadge}
+      </div>
+    </div>
+  );
 
-      <ul className="mt-3 space-y-2 border-t border-border pt-3">
-        {items.length === 0 ? (
-          <li className="text-sm text-muted-foreground italic">Loading items…</li>
-        ) : (
-          items.map((i) => (
-            <li key={i.id} className="flex items-baseline gap-2">
-              <span className="min-w-8 font-serif text-xl leading-none font-bold text-[#a8691d]">{i.qty}×</span>
-              <div className="min-w-0">
-                <p className="text-sm leading-snug font-semibold text-foreground">
-                  {i.name}
-                  {i.variant && <span className="ml-1.5 font-normal text-muted-foreground">({i.variant})</span>}
-                </p>
-                {i.note && (
-                  <p className="mt-1 rounded-lg bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-800 italic">
-                    “{i.note}”
+  // ---- Collapsed "Ready" card -----------------------------------------------------------------
+  if (collapsed) {
+    return (
+      <li className={shell}>
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          aria-expanded={false}
+          className="block w-full text-left"
+        >
+          {band}
+          <p className="truncate px-4 pt-3 text-xs text-muted-foreground">
+            {items.length === 0 ? "Loading items…" : items.map((i) => `${i.qty}× ${i.name}`).join(", ")}
+          </p>
+        </button>
+        <div className="px-4 pt-2">{payPill}</div>
+        <div className="flex items-center gap-2 p-3 pt-2.5">
+          <div
+            className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold ${st.action}`}
+          >
+            <PackageCheck className="h-4 w-4" aria-hidden="true" />
+            {readyLabel(order)}
+          </div>
+          {backBtn}
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            aria-label="Show order details"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:text-foreground"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        </div>
+      </li>
+    );
+  }
+
+  // ---- Full ticket ----------------------------------------------------------------------------
+  return (
+    <li className={shell}>
+      {band}
+
+      <div className="p-4">
+        <ul className="space-y-2.5">
+          {items.length === 0 ? (
+            <li className="text-sm text-muted-foreground italic">Loading items…</li>
+          ) : (
+            items.map((i) => (
+              <li key={i.id} className="flex items-baseline gap-2">
+                <span className={`min-w-8 font-serif text-xl leading-none font-bold ${st.qty}`}>{i.qty}×</span>
+                <div className="min-w-0">
+                  <p className="text-sm leading-snug font-semibold text-foreground">
+                    {i.name}
+                    {i.variant && <span className="ml-1.5 font-normal text-muted-foreground">({i.variant})</span>}
                   </p>
-                )}
-              </div>
-            </li>
-          ))
-        )}
-      </ul>
+                  {i.note && (
+                    <p className="mt-1 rounded-lg bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-800 italic">
+                      “{i.note}”
+                    </p>
+                  )}
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
 
-      {order.notes && (
-        <p className="mt-3 rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-amber-900">
-          <span className="font-semibold">Customer note: </span>
-          {order.notes}
-        </p>
-      )}
-      {order.admin_notes && (
-        <p className="mt-2 rounded-xl bg-[#282345]/6 px-3 py-2 text-xs text-[#282345]">
-          <span className="font-semibold">Kitchen note: </span>
-          {order.admin_notes}
-        </p>
-      )}
+        {order.notes && (
+          <p className="mt-3 rounded-xl bg-amber-500/15 px-3 py-2 text-xs text-amber-900">
+            <span className="font-semibold">Customer note: </span>
+            {order.notes}
+          </p>
+        )}
+        {order.admin_notes && (
+          <p className="mt-2 rounded-xl bg-[#282345]/8 px-3 py-2 text-xs text-[#282345]">
+            <span className="font-semibold">Kitchen note: </span>
+            {order.admin_notes}
+          </p>
+        )}
 
-      <div className="mt-4 flex items-center gap-2">
-        {next ? (
-          <button
-            onClick={() => onMove(next)}
-            disabled={busy}
-            className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold shadow-sm transition-colors disabled:opacity-60 ${
-              status === "new"
-                ? "bg-[#d39c54] text-[#1c1733] hover:bg-[#c48b3f]"
-                : "bg-emerald-600 text-white hover:bg-emerald-700"
-            }`}
-          >
-            {status === "new" ? "Start preparing" : "Mark ready"}
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </button>
-        ) : (
-          <Link
-            to="/admin/orders"
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-background px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:border-[#d39c54]"
-          >
-            Hand over in Orders
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
-        )}
-        {prev && (
-          <button
-            onClick={() => onMove(prev)}
-            disabled={busy}
-            aria-label={`Move back to ${KITCHEN_LABEL[prev]}`}
-            title={`Back to ${KITCHEN_LABEL[prev]}`}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground transition-colors hover:border-[#d39c54] hover:text-foreground disabled:opacity-60"
-          >
-            <Undo2 className="h-4 w-4" />
-          </button>
-        )}
+        <div className="mt-3">{payPill}</div>
+
+        <div className="mt-3 flex items-center gap-2">
+          {next ? (
+            <button
+              onClick={() => onMove(next)}
+              disabled={busy}
+              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold shadow-sm transition-colors disabled:opacity-60 ${st.action}`}
+            >
+              {status === "new" ? "Start preparing" : "Mark ready"}
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : (
+            <div
+              className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold ${st.action}`}
+            >
+              <PackageCheck className="h-4 w-4" aria-hidden="true" />
+              {readyLabel(order)}
+            </div>
+          )}
+          {backBtn}
+          {status === "ready" && (
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              aria-label="Collapse order"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-muted-foreground hover:text-foreground"
+            >
+              <ChevronUp className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
     </li>
   );

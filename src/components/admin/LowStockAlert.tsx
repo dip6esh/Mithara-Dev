@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { Link } from "@tanstack/react-router";
-import { AlertTriangle, ArrowRight, PackageX } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
 import { playStockAlertSound } from "../../lib/orderSound";
@@ -123,60 +123,62 @@ export function LowStockPanel() {
     <section
       role="alert"
       aria-label="Stock alerts"
-      className="rounded-3xl border border-amber-300/70 bg-amber-50 p-4 text-amber-950 shadow-sm sm:p-5"
+      className="adm-panel rounded-3xl border border-border bg-card p-4 shadow-sm sm:p-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-md shadow-amber-500/30">
-            <AlertTriangle className="h-5 w-5" aria-hidden="true" />
-          </span>
-          <div>
-            <h2 className="font-serif text-lg font-semibold leading-tight">
-              {list.length === 1 ? "1 item is running low" : `${list.length} items are running low`}
-            </h2>
-            <p className="text-xs text-amber-900/70">
-              {outCount > 0 ? `${outCount} out of stock. ` : ""}Restock or update the daily stock in Menu Control.
-            </p>
-          </div>
+        <div className="min-w-0">
+          <h2 className="font-serif text-xl font-semibold text-foreground">Low stock</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            {list.length === 1 ? "1 item" : `${list.length} items`} at or below the alert level
+            {outCount > 0 && <span className="font-medium text-rose-600"> · {outCount} out of stock</span>}
+          </p>
         </div>
         <Link
           to="/admin/menu"
-          className="inline-flex items-center gap-1.5 rounded-full bg-amber-950 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-amber-900"
+          className="group inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3.5 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:border-[#d39c54] hover:text-[#a8691d]"
         >
           Manage stock
-          <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
         </Link>
       </div>
 
-      <ul className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {list.map((i) => (
-          <li
-            key={i.id}
-            className={`flex items-center justify-between gap-3 rounded-2xl border px-3.5 py-3 ${
-              i.level === "out" ? "border-rose-300 bg-rose-50" : "border-amber-200 bg-white"
-            }`}
-          >
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-neutral-900">{i.name}</p>
-              <p className="text-[11px] text-neutral-500">
-                {CATEGORY_LABEL[i.category] ?? i.category} · alert at {i.alertAt} · limit {i.limit}
-              </p>
-            </div>
-            {i.level === "out" ? (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-600 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
-                <PackageX className="h-3 w-3" aria-hidden="true" />
-                Out
-              </span>
-            ) : (
-              <span className="shrink-0 text-right">
-                <span className="block font-serif text-2xl font-semibold leading-none tabular-nums text-amber-700">
-                  {i.left}
+      <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {list.map((i) => {
+          const out = i.level === "out";
+          const pct = i.limit > 0 ? Math.min(100, Math.max(0, (i.left / i.limit) * 100)) : 0;
+          return (
+            <li key={i.id} className="rounded-2xl border border-border bg-background/60 p-3.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-foreground">{i.name}</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">{CATEGORY_LABEL[i.category] ?? i.category}</p>
+                </div>
+                <span
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                    out ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${out ? "bg-rose-500" : "bg-amber-500"}`} aria-hidden="true" />
+                  {out ? "Out of stock" : `${i.left} left`}
                 </span>
-                <span className="text-[10px] font-medium uppercase tracking-wide text-neutral-500">left</span>
-              </span>
-            )}
-          </li>
-        ))}
+              </div>
+
+              <div
+                className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"
+                role="img"
+                aria-label={`${i.left} of ${i.limit} left`}
+              >
+                <div
+                  className={`h-full rounded-full transition-[width] duration-500 ${out ? "bg-rose-500" : "bg-amber-500"}`}
+                  style={{ width: out ? "0%" : `${Math.max(pct, 4)}%` }}
+                />
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground tabular-nums">
+                {i.left} of {i.limit} left today · alert at {i.alertAt}
+              </p>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

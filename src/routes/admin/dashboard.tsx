@@ -179,6 +179,15 @@ function AdminDashboardPage() {
 
   /** Hand over from the dashboard. Unpaid orders are opened on the Orders page to record cash/UPI. */
   const handleHandover = async (order: Order) => {
+    // Same safety net as the Orders page: a customer may have paid early, before the kitchen finished.
+    if (
+      order.kitchen_status !== "ready" &&
+      !window.confirm(
+        `The kitchen has not marked ${order.order_number} ready yet. Hand it over anyway?`,
+      )
+    ) {
+      return;
+    }
     try {
       const { error } = await supabase
         .from("orders")

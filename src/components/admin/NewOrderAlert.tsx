@@ -277,7 +277,7 @@ export function NewOrderAlert() {
       onPointerDown={unlockAudio}
     >
       <div className="adm-modal relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-900 text-neutral-200 shadow-2xl">
-        <div className="flex items-center gap-4 border-b border-neutral-800 p-5 pr-14">
+        <div className="flex items-center gap-4 border-b border-neutral-800 p-5 pr-4">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-lg shadow-amber-500/30">
             <Bell className="adm-bell h-6 w-6" aria-hidden="true" />
           </div>
@@ -295,7 +295,7 @@ export function NewOrderAlert() {
             type="button"
             onClick={requestDismissAll}
             aria-label="Dismiss all"
-            className="absolute top-5 right-5 rounded-lg p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+            className="ml-auto shrink-0 self-start rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
           >
             <X className="h-5 w-5" />
           </button>

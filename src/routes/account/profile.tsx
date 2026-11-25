@@ -788,25 +788,29 @@ function CustomerProfilePage() {
       {selectedOrder && (
         <ModalBackdrop onClose={() => setSelectedOrder(null)}>
           <div className="adm-modal relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-border bg-card p-6 text-foreground shadow-2xl">
-            <button
-              onClick={() => setSelectedOrder(null)}
-              aria-label="Close"
-              className="absolute top-5 right-5 rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <div className="flex flex-wrap items-center gap-2 pr-8">
-              <span className="font-mono text-xl font-bold text-foreground">{selectedOrder.order_number}</span>
-              <StatusChip status={selectedOrder.status} />
-              {selectedOrder.payment_mode === "demo" && selectedOrder.payment_method !== "cash" && <DemoBadge />}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-xl font-bold text-foreground">{selectedOrder.order_number}</span>
+                <StatusChip status={selectedOrder.status} />
+                {selectedOrder.payment_mode === "demo" && selectedOrder.payment_method !== "cash" && <DemoBadge />}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                Placed on{" "}
+                {new Date(selectedOrder.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                {" · "}
+                <span className="capitalize">{selectedOrder.delivery_type}</span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedOrder(null)}
+                aria-label="Close"
+                className="-mr-2 -mt-1 shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Placed on{" "}
-              {new Date(selectedOrder.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
-              {" · "}
-              <span className="capitalize">{selectedOrder.delivery_type}</span>
-            </p>
 
             {isActive(selectedOrder) && <OrderProgress order={selectedOrder} />}
 
@@ -909,16 +913,20 @@ function CustomerProfilePage() {
       {showAddAddress && (
         <ModalBackdrop onClose={() => setShowAddAddress(false)}>
           <div className="adm-modal relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-border bg-card p-6 text-foreground shadow-2xl">
-            <button
-              onClick={() => setShowAddAddress(false)}
-              aria-label="Close"
-              className="absolute top-5 right-5 rounded-lg p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <h2 className="pr-8 font-serif text-xl font-semibold text-foreground">Add a delivery address</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Label it Home, Office, or a friend's place</p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="font-serif text-xl font-semibold text-foreground">Add a delivery address</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Label it Home, Office, or a friend's place</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddAddress(false)}
+                aria-label="Close"
+                className="-mr-2 -mt-1 shrink-0 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
             <form onSubmit={handleSaveAddress} className="mt-5 space-y-3 text-xs">
               <div>

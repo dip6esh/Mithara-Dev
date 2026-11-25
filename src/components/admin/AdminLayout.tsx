@@ -23,6 +23,7 @@ import { unwrapSetting, isStoreClosed, DEFAULT_STORE_SETTINGS } from "../../lib/
 import { AdminGuard } from "./AdminGuard";
 import { NewOrderAlert, OrderSoundToggle } from "./NewOrderAlert";
 import { LowStockWatcher } from "./LowStockAlert";
+import { ReadyOrderWatcher } from "./ReadyOrderAlert";
 import { NotificationBell, NotificationsWatcher } from "./NotificationCenter";
 import { toast } from "sonner";
 import logoText from "../../assets/mithara-logo.png";
@@ -384,6 +385,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         </div>
         <NewOrderAlert />
         <LowStockWatcher />
+        <ReadyOrderWatcher />
         <NotificationsWatcher />
       </div>
     </AdminGuard>

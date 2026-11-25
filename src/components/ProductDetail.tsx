@@ -238,8 +238,8 @@ function MenuGrid({ menu, category }: { menu: MenuItem[]; category: string }) {
       </div>
 
       <Dialog open={!!previewItem} onOpenChange={(open) => !open && setPreviewItem(null)}>
-        <DialogContent className="max-w-2xl w-[calc(100vw-2rem)] sm:w-full border-border/60 bg-[#282345] p-5 sm:p-6 text-foreground rounded-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="adm-scroll max-w-2xl w-[calc(100vw-2rem)] sm:w-full border-border/60 bg-[#282345] p-5 sm:p-6 text-foreground rounded-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="pr-8">
             <DialogTitle className="font-serif text-2xl sm:text-3xl text-foreground">
               {previewItem?.name}
             </DialogTitle>

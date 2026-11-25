@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabase";
 import { cacheGet, cacheSet, hasCache, useCachedState } from "../../lib/adminCache";
 import { fetchInvoiceMap, invoiceHref, issueMissingInvoices, type InvoiceSummary } from "../../lib/invoice";
 import { Order, OrderStatus, DeliveryType, PaidVia } from "../../lib/types";
+import { isReadyForDispatch, readyLabel } from "../../lib/kitchen";
 import { PAID_VIA_LABEL, PAYMENT_TONE_CLASS, STATUS_LABEL, paymentSummary } from "../../lib/orderFlow";
 import { useOrdersRealtime } from "../../hooks/useAdminOrders";
 import {
@@ -24,6 +25,7 @@ import {
   DollarSign,
   AlertCircle,
   X,
+  PackageCheck,
 } from "lucide-react";
 import { WhatsAppButton } from "../../components/admin/WhatsAppButton";
 import { toast } from "sonner";
@@ -40,6 +42,10 @@ function customerNote(o: Order): string | null {
 }
 
 export const Route = createFileRoute("/admin/orders")({
+  // ?tab=ready opens the Ready tab (used by the "order ready" toast).
+  validateSearch: (search: Record<string, unknown>): { tab?: "ready" } => ({
+    tab: search.tab === "ready" ? "ready" : undefined,
+  }),
   head: () => ({
     meta: [{ title: "Mithara Admin — Orders" }],
   }),
@@ -48,6 +54,7 @@ export const Route = createFileRoute("/admin/orders")({
 
 const STATUS_TABS: { label: string; value: string }[] = [
   { label: "Order received", value: "new" },
+  { label: "Ready", value: "ready" },
   { label: "Handed over", value: "completed" },
   { label: "Cancelled", value: "cancelled" },
   { label: "Awaiting payment", value: "pending_payment" },
@@ -85,7 +92,12 @@ function AdminOrdersPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   // Matches found by searching the *whole* history on the server (beyond what is loaded).
   const [searchExtra, setSearchExtra] = useState<Order[]>([]);
-  const [activeTab, setActiveTab] = useState("new");
+  const { tab: tabFromLink } = Route.useSearch();
+  const [activeTab, setActiveTab] = useState(tabFromLink ?? "new");
+  // The "order ready" toast can point here while this page is already open.
+  useEffect(() => {
+    if (tabFromLink) setActiveTab(tabFromLink);
+  }, [tabFromLink]);
   const [searchQuery, setSearchQuery] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [deliveryFilter, setDeliveryFilter] = useState("all");
@@ -243,6 +255,29 @@ function AdminOrdersPage() {
     }
   };
 
+  /**
+   * Record a payment taken before the order is ready (e.g. a pick-up customer who arrives early).
+   * Only the payment changes: the order stays "Order received", so it stays on the Kitchen board.
+   * The invoice is created by the database the moment the order is marked paid.
+   */
+  const handleRecordPayment = async (order: Order, via: PaidVia) => {
+    setIsUpdatingOrder(true);
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ payment_status: "paid", paid_via: via, updated_at: new Date().toISOString() })
+        .eq("id", order.id)
+        .eq("status", "new");
+      if (error) throw error;
+      toast.success(`${PAID_VIA_LABEL[via]} payment recorded`);
+      fetchOrders(true);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to record payment");
+    } finally {
+      setIsUpdatingOrder(false);
+    }
+  };
+
   /** Every action that changes an order or its invoice goes through the confirmation box first. */
   const ask = (action: PendingAction) => setPendingAction(action);
 
@@ -255,6 +290,9 @@ function AdminOrdersPage() {
         break;
       case "collect":
         await handleHandover(a.order, a.via);
+        break;
+      case "record_payment":
+        await handleRecordPayment(a.order, a.via);
         break;
       case "cancel":
         await handleUpdateStatus(a.order.id, "cancelled");
@@ -355,7 +393,9 @@ function AdminOrdersPage() {
 
   // Filtered orders
   const filteredOrders = allOrders.filter((order) => {
-    if (activeTab !== "all" && order.status !== activeTab) return false;
+    if (activeTab === "ready") {
+      if (!isReadyForDispatch(order)) return false;
+    } else if (activeTab !== "all" && order.status !== activeTab) return false;
     if (paymentFilter !== "all" && order.payment_status !== paymentFilter) return false;
     if (deliveryFilter !== "all" && order.delivery_type !== deliveryFilter) return false;
 
@@ -411,7 +451,9 @@ function AdminOrdersPage() {
             const count =
               tab.value === "all"
                 ? orders.length
-                : orders.filter((o) => o.status === tab.value).length;
+                : tab.value === "ready"
+                  ? orders.filter(isReadyForDispatch).length
+                  : orders.filter((o) => o.status === tab.value).length;
             const countLabel = hasMore && tab.value === "all" ? `${count}+` : count;
             const active = activeTab === tab.value;
             if (tab.value === "pending_payment" && count === 0 && !active) return null;
@@ -428,7 +470,11 @@ function AdminOrdersPage() {
                 <span>{tab.label}</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[10px] ${
-                    active ? "bg-amber-400/20 text-amber-300" : "bg-neutral-800 text-neutral-500"
+                    tab.value === "ready" && count > 0
+                      ? "bg-[#059669] text-white"
+                      : active
+                        ? "bg-amber-400/20 text-amber-300"
+                        : "bg-neutral-800 text-neutral-500"
                   }`}
                 >
                   {countLabel}
@@ -509,13 +555,18 @@ function AdminOrdersPage() {
                       `Hello ${order.customer_name}, about your Mithara order ${order.order_number} (${STATUS_LABEL[order.status]}).`
                     )}`;
 
+                    const ready = isReadyForDispatch(order);
+
                     return (
                       <tr
                         key={order.id}
-                        className="hover:bg-neutral-800/30 transition-colors cursor-pointer"
+                        className={`cursor-pointer transition-colors ${
+                          ready ? "bg-[#10b981]/10 hover:bg-[#10b981]/15" : "hover:bg-neutral-800/30"
+                        }`}
                         onClick={() => setSelectedOrder(order)}
                       >
-                        <td className="py-3.5 px-4">
+                        <td className="relative py-3.5 px-4">
+                          {ready && <span className="absolute inset-y-0 left-0 w-1 bg-[#10b981]" aria-hidden="true" />}
                           <div className="font-mono font-bold text-amber-300">
                             {order.order_number}
                           </div>
@@ -586,6 +637,19 @@ function AdminOrdersPage() {
                           >
                             {STATUS_LABEL[order.status]}
                           </span>
+                          {ready && (
+                            <div className="mt-1.5">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-[#059669] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                                <PackageCheck className="h-3 w-3" aria-hidden="true" />
+                                {readyLabel(order)}
+                              </span>
+                            </div>
+                          )}
+                          {order.status === "new" && order.kitchen_status === "preparing" && (
+                            <div className="mt-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#6d5fb3]">
+                              In the kitchen
+                            </div>
+                          )}
                         </td>
 
                         <td
@@ -634,22 +698,11 @@ function AdminOrdersPage() {
         {selectedOrder && (
           <ModalBackdrop onClose={() => setSelectedOrder(null)}>
             <div className="adm-modal relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-neutral-200 shadow-2xl">
-              {/* Close bar: its own row, pinned while the pop-up scrolls, so it never covers the details below */}
-              <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-3 flex justify-end rounded-t-3xl bg-neutral-900/95 px-4 pt-4 pb-1 backdrop-blur-sm">
-                <button
-                  type="button"
-                  onClick={() => setSelectedOrder(null)}
-                  aria-label="Close"
-                  className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-foreground"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
 
               {/* Modal Header */}
-              <div className="mb-6 flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
+              <div className="mb-5 flex items-start justify-between gap-3 border-b border-neutral-800 pb-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-mono text-xl font-bold text-amber-300">
                       {selectedOrder.order_number}
                     </span>
@@ -667,19 +720,41 @@ function AdminOrdersPage() {
                   </p>
                 </div>
 
-                <div className="text-right">
-                  <div className="font-serif text-2xl font-bold text-neutral-100">
-                    {formatINR(selectedOrder.total_inr)}
+                <div className="flex shrink-0 items-start gap-2">
+                  <div className="text-right">
+                    <div className="font-serif text-2xl font-bold leading-none text-neutral-100">
+                      {formatINR(selectedOrder.total_inr)}
+                    </div>
+                    <div className="mt-2 flex justify-end">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${PAYMENT_TONE_CLASS[paymentSummary(selectedOrder).tone]}`}
+                      >
+                        {paymentSummary(selectedOrder).label}
+                      </span>
+                    </div>
                   </div>
-                  <div className="mt-1 flex justify-end">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${PAYMENT_TONE_CLASS[paymentSummary(selectedOrder).tone]}`}
-                    >
-                      {paymentSummary(selectedOrder).label}
-                    </span>
-                  </div>
+                  <button
+                  type="button"
+                  onClick={() => setSelectedOrder(null)}
+                  aria-label="Close"
+                  className="-mr-2 -mt-1 shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
                 </div>
               </div>
+
+              {isReadyForDispatch(selectedOrder) && (
+                <div className="mb-4 flex items-center gap-3 rounded-2xl border border-[#10b981]/40 bg-[#10b981]/10 px-4 py-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#059669] text-white">
+                    <PackageCheck className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-neutral-100">{readyLabel(selectedOrder)}</p>
+                    <p className="text-xs text-neutral-400">The kitchen has finished this order.</p>
+                  </div>
+                </div>
+              )}
 
               {/* Bill breakdown: subtotal, delivery (with free-delivery rule), tax, total */}
               <div className="mb-6 rounded-2xl border border-neutral-800 bg-neutral-950/60 p-4 text-sm">
@@ -713,85 +788,120 @@ function AdminOrdersPage() {
                 </div>
               </div>
 
-              {/* Order handling: Received -> Paid -> Handed over */}
-              <div className="mb-6 rounded-2xl border border-neutral-800 bg-neutral-950/60 p-4">
-                <div className="mb-4 flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                    Order status
-                  </span>
+              {/* Order handling: Received -> Paid -> Ready -> Handed over */}
+              <section className="mb-6 overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950/60">
+                <header className="flex items-center justify-between gap-2 border-b border-neutral-800 px-4 py-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">Order status</h3>
                   <span
                     className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${STATUS_BADGE[selectedOrder.status]}`}
                   >
                     {STATUS_LABEL[selectedOrder.status]}
                   </span>
-                </div>
+                </header>
 
-                <OrderProgress order={selectedOrder} />
+                <div className="space-y-4 px-4 py-4">
+                  <OrderProgress order={selectedOrder} />
 
-                {/* Next step: one clear thing to do */}
-                {selectedOrder.status === "new" && selectedOrder.payment_status === "paid" && (
-                  <>
-                    <p className="mb-3 text-sm text-emerald-300">
-                      Already paid ({paymentSummary(selectedOrder).detail}). Nothing to collect.
-                    </p>
-                    <button
-                      disabled={isUpdatingOrder}
-                      onClick={() => ask({ kind: "handover_paid", order: selectedOrder })}
-                      className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
-                    >
-                      Mark handed over
-                    </button>
-                  </>
-                )}
-
-                {selectedOrder.status === "new" && selectedOrder.payment_status !== "paid" && (
-                  <>
-                    <p className="mb-3 text-sm text-amber-200">
-                      Collect <span className="font-bold">{formatINR(selectedOrder.total_inr)}</span> at handover.
-                      Choose how it was paid:
-                    </p>
-                    <div className="grid grid-cols-2 gap-2">
+                  {/* Next step: one clear thing to do */}
+                  {selectedOrder.status === "new" && selectedOrder.payment_status === "paid" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-900/70 px-3.5 py-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-neutral-100">Payment received</p>
+                          <p className="text-xs text-neutral-400">
+                            {selectedOrder.paid_via ? PAID_VIA_LABEL[selectedOrder.paid_via] : paymentSummary(selectedOrder).detail}
+                            {" · "}nothing to collect
+                          </p>
+                        </div>
+                        <span className="shrink-0 font-serif text-lg font-bold tabular-nums text-neutral-100">
+                          {formatINR(selectedOrder.total_inr)}
+                        </span>
+                      </div>
+                      {selectedOrder.kitchen_status !== "ready" && (
+                        <p className="text-xs text-neutral-400">The kitchen has not marked this order ready yet.</p>
+                      )}
                       <button
                         disabled={isUpdatingOrder}
-                        onClick={() => ask({ kind: "collect", order: selectedOrder, via: "cash" })}
-                        className="rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
+                        onClick={() => ask({ kind: "handover_paid", order: selectedOrder })}
+                        className="w-full rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
                       >
-                        Cash received
-                      </button>
-                      <button
-                        disabled={isUpdatingOrder}
-                        onClick={() => ask({ kind: "collect", order: selectedOrder, via: "upi" })}
-                        className="rounded-xl bg-amber-500 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
-                      >
-                        UPI / online received
+                        Mark handed over
                       </button>
                     </div>
-                  </>
-                )}
+                  )}
 
-                {selectedOrder.status === "completed" && (
-                  <p className="text-sm text-emerald-300">
-                    Handed over · {paymentSummary(selectedOrder).label} ({paymentSummary(selectedOrder).detail})
-                    {selectedOrder.paid_at
-                      ? ` · ${new Date(selectedOrder.paid_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`
-                      : ""}
-                  </p>
-                )}
+                  {selectedOrder.status === "new" && selectedOrder.payment_status !== "paid" && (() => {
+                    // Kitchen finished: collect and hand over in one go. Not finished yet (e.g. a pick-up
+                    // customer arrived early and wants to pay): only record the payment, order stays in the kitchen.
+                    const ready = selectedOrder.kitchen_status === "ready";
+                    const kind = ready ? "collect" : "record_payment";
+                    return (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-900/70 px-3.5 py-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-neutral-100">Amount to collect</p>
+                            <p className="text-xs text-neutral-400">
+                              {ready ? "Collect at handover" : "Collect now or at handover"}
+                            </p>
+                          </div>
+                          <span className="shrink-0 font-serif text-lg font-bold tabular-nums text-amber-300">
+                            {formatINR(selectedOrder.total_inr)}
+                          </span>
+                        </div>
 
-                {selectedOrder.status === "pending_payment" && (
-                  <p className="text-sm text-neutral-400">
-                    The customer is still paying online. It becomes an order once payment goes through.
-                  </p>
-                )}
+                        <div>
+                          <p className="mb-2 text-xs font-medium text-neutral-400">How was it paid?</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              disabled={isUpdatingOrder}
+                              onClick={() => ask({ kind, order: selectedOrder, via: "cash" })}
+                              className="rounded-xl bg-amber-500 px-3 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
+                            >
+                              {ready ? "Cash & hand over" : "Record cash"}
+                            </button>
+                            <button
+                              disabled={isUpdatingOrder}
+                              onClick={() => ask({ kind, order: selectedOrder, via: "upi" })}
+                              className="rounded-xl bg-amber-500 px-3 py-2.5 text-sm font-bold text-gold-foreground shadow-md shadow-amber-500/20 hover:bg-amber-400 disabled:opacity-60"
+                            >
+                              {ready ? "UPI & hand over" : "Record UPI"}
+                            </button>
+                          </div>
+                        </div>
 
-                {selectedOrder.status === "cancelled" && (
-                  <p className="text-sm text-neutral-400">
-                    Cancelled orders do not count as sales. You can bring it back if this was a mistake.
-                  </p>
-                )}
+                        {!ready && (
+                          <p className="text-xs leading-relaxed text-neutral-500">
+                            The order is not ready yet. Recording a payment keeps it in the kitchen until you hand it over.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {selectedOrder.status === "completed" && (
+                    <p className="text-sm text-neutral-300">
+                      Handed over · {paymentSummary(selectedOrder).label} ({paymentSummary(selectedOrder).detail})
+                      {selectedOrder.paid_at
+                        ? ` · ${new Date(selectedOrder.paid_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}`
+                        : ""}
+                    </p>
+                  )}
+
+                  {selectedOrder.status === "pending_payment" && (
+                    <p className="text-sm text-neutral-400">
+                      The customer is still paying online. It becomes an order once payment goes through.
+                    </p>
+                  )}
+
+                  {selectedOrder.status === "cancelled" && (
+                    <p className="text-sm text-neutral-400">
+                      Cancelled orders do not count as sales. You can bring it back if this was a mistake.
+                    </p>
+                  )}
+                </div>
 
                 {/* Same place on every order: undo / cancel / restore */}
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-800 pt-3">
+                <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-800 bg-neutral-900/40 px-4 py-3">
                   {selectedOrder.status === "cancelled" ? (
                     <button
                       disabled={isUpdatingOrder}
@@ -818,8 +928,8 @@ function AdminOrdersPage() {
                       Move back to Order received
                     </button>
                   )}
-                </div>
-              </div>
+                </footer>
+              </section>
 
               {/* Customer & Address Info */}
               <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1014,24 +1124,25 @@ function AdminOrdersPage() {
         {showCreateModal && (
           <ModalBackdrop onClose={() => setShowCreateModal(false)}>
             <div className="adm-modal relative w-full max-w-lg rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-neutral-200 shadow-2xl">
-              {/* Close bar: its own row, pinned while the pop-up scrolls, so it never covers the details below */}
-              <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-3 flex justify-end rounded-t-3xl bg-neutral-900/95 px-4 pt-4 pb-1 backdrop-blur-sm">
+
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="font-serif text-xl font-bold text-neutral-100">
+                    Create Manual Phone / Walk-in Order
+                  </h2>
+                  <p className="mt-1 text-xs text-neutral-400">
+                    Log an offline order into the Mithara system
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
                   aria-label="Close"
-                  className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-foreground"
+                  className="-mr-2 -mt-1 shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
-
-              <h2 className="font-serif text-xl font-bold text-neutral-100">
-                Create Manual Phone / Walk-in Order
-              </h2>
-              <p className="mt-1 text-xs text-neutral-400">
-                Log an offline order into the Mithara system
-              </p>
 
               <form onSubmit={handleCreateManualOrder} className="mt-6 space-y-4">
                 <div>

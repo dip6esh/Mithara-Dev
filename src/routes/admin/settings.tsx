@@ -16,11 +16,27 @@ import {
   CheckCircle2,
   XCircle,
   ChevronDown,
+  Volume2,
+  Volume1,
+  VolumeX,
 } from "lucide-react";
 import { WhatsAppIcon } from "../../components/admin/WhatsAppButton";
 import { toast } from "sonner";
 import { unwrapSetting, isStoreClosed, DEFAULT_STORE_SETTINGS } from "../../lib/settings";
 import { formatINR } from "../../lib/enquiry";
+import {
+  DEFAULT_VOLUME,
+  isAudioBlocked,
+  playOrderChime,
+  playReadyOrderSound,
+  playStockAlertSound,
+  setSoundEnabled,
+  setSoundVolume,
+  stopSounds,
+  unlockAudio,
+  useSoundEnabled,
+  useSoundVolume,
+} from "../../lib/orderSound";
 
 export const Route = createFileRoute("/admin/settings")({
   head: () => ({
@@ -561,6 +577,11 @@ function AdminSettingsPage() {
             )}
           </Section>
 
+          {/* ───────── ALERTS ───────── */}
+          <GroupLabel>Alerts</GroupLabel>
+
+          <SoundSettings />
+
           {/* ───────── BUSINESS DETAILS ───────── */}
           <GroupLabel>Business details</GroupLabel>
 
@@ -690,6 +711,10 @@ const NAV_GROUPS: {
       { id: "tax", label: "Tax (GST)", icon: Percent, navColor: "text-[#b9772a]" },
       { id: "payment", label: "Payment mode", icon: Wallet, navColor: "text-[#7c3aed]" },
     ],
+  },
+  {
+    title: "Alerts",
+    items: [{ id: "sound", label: "Sound", icon: Volume2, navColor: "text-[#7c3aed]" }],
   },
   {
     title: "Business details",
@@ -867,6 +892,99 @@ function Input({
 
 function TextArea({ className = "", ...rest }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...rest} className={`${FIELD_BASE} rounded-xl px-3.5 py-2.5 ${className}`} />;
+}
+
+/**
+ * Alert sound controls: mute switch + volume. These are kept per device (this browser), because the
+ * speaker is on the device, so they apply immediately and are not part of "Save all settings".
+ */
+function SoundSettings() {
+  const on = useSoundEnabled();
+  const volume = useSoundVolume();
+  const level = volume === 0 ? "Silent" : volume < DEFAULT_VOLUME ? "Quiet" : volume === DEFAULT_VOLUME ? "Normal" : volume < 100 ? "Loud" : "Maximum";
+  const VolIcon = volume === 0 ? VolumeX : volume < DEFAULT_VOLUME ? Volume1 : Volume2;
+
+  const tests: { label: string; hint: string; play: () => void }[] = [
+    { label: "New order bell", hint: "Rising bell and chord", play: () => void playOrderChime() },
+    { label: "Order ready", hint: "Double desk-bell ding", play: () => void playReadyOrderSound() },
+    { label: "Low stock", hint: "Soft descending pluck", play: () => void playStockAlertSound() },
+  ];
+
+  return (
+    <Section
+      id="sound"
+      tone="violet"
+      icon={Volume2}
+      title="Alert sound"
+      description="Volume and mute for the new-order bell, order-ready ding and low-stock warning."
+      action={
+        <Toggle
+          checked={on}
+          label="Alert sounds"
+          onChange={(v) => {
+            unlockAudio();
+            setSoundEnabled(v);
+            if (v) {
+              stopSounds();
+              playOrderChime();
+            } // test ring, also proves the browser allows sound
+          }}
+        />
+      }
+    >
+      <Field label="Volume" htmlFor="sound-volume" hint="Use Test below to hear it. Drag right for a louder bell in a noisy kitchen.">
+        <div className={`flex items-center gap-3 ${on ? "" : "opacity-50"}`}>
+          <VolIcon className="h-5 w-5 shrink-0 text-neutral-400" aria-hidden="true" />
+          <input
+            id="sound-volume"
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={volume}
+            disabled={!on}
+            onChange={(e) => setSoundVolume(Number(e.target.value))}
+            style={{ "--pct": `${volume}%` } as React.CSSProperties}
+            className="adm-range min-w-0 flex-1"
+            aria-valuetext={`${volume} percent, ${level}`}
+          />
+          <span className="w-[4.5rem] shrink-0 text-right text-sm font-semibold tabular-nums text-neutral-200">
+            {volume}%
+            <span className="block text-[11px] font-medium text-neutral-500">{level}</span>
+          </span>
+        </div>
+      </Field>
+
+      <SubHeading>Test</SubHeading>
+      <div className="grid gap-2 sm:grid-cols-3">
+        {tests.map((t) => (
+          <button
+            key={t.label}
+            type="button"
+            disabled={!on}
+            onClick={() => {
+              unlockAudio();
+              stopSounds(); // one test at a time: cut off whichever is still playing
+              t.play();
+            }}
+            className="adm-no-lift flex items-center gap-3 rounded-xl border border-[#d3cde4] bg-white px-3.5 py-2.5 text-left transition-colors hover:border-[#d39c54] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-[#d3cde4]"
+          >
+            <Volume2 className="h-4 w-4 shrink-0 text-[#7c3aed]" aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-[13px] font-semibold text-neutral-100">{t.label}</span>
+              <span className="block truncate text-[11px] text-neutral-500">{t.hint}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <Callout tone="info" icon={AlertCircle}>
+        {on ? "" : "Sound is muted, so no alert will ring until you turn it back on. "}
+        These settings apply to this browser only, so set them on the device that sits by the kitchen.
+        {isAudioBlocked() ? " Your browser may stay silent until you click anywhere on the page once." : ""}
+      </Callout>
+    </Section>
+  );
 }
 
 const pad2 = (n: number) => String(n).padStart(2, "0");

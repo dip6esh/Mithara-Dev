@@ -269,22 +269,11 @@ function AdminCustomersPage() {
         {selectedCustomer && (
           <ModalBackdrop onClose={() => setSelectedCustomer(null)}>
             <div className="adm-modal relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-neutral-200 shadow-2xl">
-              {/* Close bar: its own row, pinned while the pop-up scrolls, so it never covers the details below */}
-              <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-3 flex justify-end rounded-t-3xl bg-neutral-900/95 px-4 pt-4 pb-1 backdrop-blur-sm">
-                <button
-                  type="button"
-                  onClick={() => setSelectedCustomer(null)}
-                  aria-label="Close"
-                  className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-foreground"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
 
               {/* Customer Profile Header */}
               <div className="mb-6 border-b border-neutral-800 pb-4">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <h2 className="font-serif text-2xl font-bold text-neutral-100">
                       {selectedCustomer.name}
                     </h2>
@@ -302,9 +291,19 @@ function AdminCustomersPage() {
                     </div>
                   </div>
 
-                  <WhatsAppButton
-                    href={`https://wa.me/${selectedCustomer.phone.replace(/[^0-9]/g, "")}`}
-                  />
+                  <div className="flex shrink-0 items-start gap-2">
+                    <WhatsAppButton
+                      href={`https://wa.me/${selectedCustomer.phone.replace(/[^0-9]/g, "")}`}
+                    />
+                    <button
+                  type="button"
+                  onClick={() => setSelectedCustomer(null)}
+                  aria-label="Close"
+                  className="-mr-2 -mt-1 shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+                  </div>
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">

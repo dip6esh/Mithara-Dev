@@ -72,3 +72,11 @@ export const isMissingKitchenColumn = (err: unknown) => {
   const e = err as { code?: string; message?: string } | null;
   return !!e && (e.code === "42703" || /kitchen_status/i.test(e.message ?? ""));
 };
+
+/** Kitchen has finished it and it is waiting for the team to send it out / for the customer to collect. */
+export const isReadyForDispatch = (o: Pick<Order, "status" | "kitchen_status">) =>
+  o.status === "new" && o.kitchen_status === "ready";
+
+/** Wording shared by the kitchen board and the Orders list. */
+export const readyLabel = (o: Pick<Order, "delivery_type">) =>
+  o.delivery_type === "pickup" ? "Ready for pickup" : "Ready for delivery";

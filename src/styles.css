@@ -513,6 +513,32 @@ html[data-scrolling="true"] .float { animation-play-state: paused; }
 .adm-backdrop { animation: adm-fade .22s ease-out; }
 .adm-modal { animation: adm-pop .32s var(--adm-spring); }
 
+/* Pop-up scrollbars: a slim, rounded pill that stays quiet until you hover or drag it.
+   The track is inset from the top and bottom so the thumb never runs into the card's rounded corners,
+   and there are no arrow buttons. Applies to the card and to any scrolling list inside it.
+   Chrome/Safari/Edge use the ::-webkit-scrollbar pieces; Firefox falls back to the standard thin bar. */
+/* The card reserves the scrollbar's width on BOTH sides, so the left and right margins stay equal
+   whether or not the scrollbar is showing. (Overlay scrollbars on phones/macOS take no space, so
+   nothing changes there.) Lists nested inside the card keep the default. */
+.adm-modal, .adm-scroll { scrollbar-gutter: stable both-edges; }
+:is(.adm-modal, .adm-scroll, .adm-modal *, .adm-scroll *)::-webkit-scrollbar { width: 10px; height: 10px; }
+:is(.adm-modal, .adm-scroll, .adm-modal *, .adm-scroll *)::-webkit-scrollbar-track { background: transparent; margin: 20px 0; }
+:is(.adm-modal, .adm-scroll, .adm-modal *, .adm-scroll *)::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+:is(.adm-modal, .adm-scroll, .adm-modal *, .adm-scroll *)::-webkit-scrollbar-corner { background: transparent; }
+:is(.adm-modal, .adm-scroll, .adm-modal *, .adm-scroll *)::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 140, 175, 0.28);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+  transition: background-color .2s;
+}
+:is(.adm-modal, .adm-scroll, .adm-modal *, .adm-scroll *):hover::-webkit-scrollbar-thumb { background-color: rgba(148, 140, 175, 0.5); }
+:is(.adm-modal, .adm-scroll, .adm-modal *, .adm-scroll *)::-webkit-scrollbar-thumb:hover,
+:is(.adm-modal, .adm-scroll, .adm-modal *, .adm-scroll *)::-webkit-scrollbar-thumb:active { background-color: rgba(211, 156, 84, 0.9); }
+@supports not selector(::-webkit-scrollbar) {
+  :is(.adm-modal, .adm-scroll, .adm-modal *, .adm-scroll *) { scrollbar-width: thin; scrollbar-color: rgba(148, 140, 175, 0.4) transparent; }
+}
+
 /* Urgent badge */
 .adm-urgent { animation: adm-ring 1.8s ease-out infinite; }
 
@@ -553,3 +579,50 @@ html:has(.admin-theme) { scrollbar-gutter: stable; }
 
 /* Admin access / loading splash: the card fades in after a beat, so a fast check never flashes a screen. */
 .adm-splash-body { animation: adm-fade .4s ease .25s both; }
+
+/* Kitchen display: slim, rounded scrollbar that stays out of the way. A soft indigo pill with a small
+   inset, no arrows, no track; it brightens when you hover the list or drag it.
+   Chrome/Safari/Edge use the ::-webkit-scrollbar pieces (custom shape); Firefox falls back to the
+   standard thin scrollbar with the same colours. */
+.kd-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.kd-scroll::-webkit-scrollbar-track { background: transparent; }
+.kd-scroll::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+.kd-scroll::-webkit-scrollbar-corner { background: transparent; }
+.kd-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(40, 35, 69, 0.18);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.2s;
+}
+.kd-scroll:hover::-webkit-scrollbar-thumb { background-color: rgba(40, 35, 69, 0.34); }
+.kd-scroll::-webkit-scrollbar-thumb:hover,
+.kd-scroll::-webkit-scrollbar-thumb:active { background-color: rgba(211, 156, 84, 0.9); }
+@supports not selector(::-webkit-scrollbar) {
+  .kd-scroll { scrollbar-width: thin; scrollbar-color: rgba(40, 35, 69, 0.28) transparent; }
+}
+
+
+/* Volume slider (admin settings): a slim filled track with a round indigo thumb. --pct is set inline. */
+.adm-range { -webkit-appearance: none; appearance: none; height: 22px; background: transparent; cursor: pointer; }
+.adm-range:disabled { cursor: not-allowed; }
+.adm-range:focus { outline: none; }
+.adm-range::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
+  background: linear-gradient(to right, #282345 0, #282345 var(--pct, 50%), #e1dcee var(--pct, 50%), #e1dcee 100%);
+}
+.adm-range::-moz-range-track { height: 6px; border-radius: 999px; background: #e1dcee; }
+.adm-range::-moz-range-progress { height: 6px; border-radius: 999px; background: #282345; }
+.adm-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; margin-top: -7px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; border: 2px solid #282345; box-shadow: 0 1px 3px rgba(40, 35, 69, .3);
+  transition: transform .15s;
+}
+.adm-range::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; border: 2px solid #282345; box-shadow: 0 1px 3px rgba(40, 35, 69, .3);
+}
+.adm-range:not(:disabled):hover::-webkit-slider-thumb { transform: scale(1.1); }
+.adm-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgba(211, 156, 84, .55); }
+.adm-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px rgba(211, 156, 84, .55); }

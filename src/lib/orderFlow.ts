@@ -34,9 +34,10 @@ export function paymentSummary(o: Order): { label: string; detail: string; tone:
         tone: "paid",
       };
     }
+    // Paid in person: possibly before the order was ready, so the label says how, not when.
     return {
-      label: "Paid at handover",
-      detail: o.paid_via ? PAID_VIA_LABEL[o.paid_via] : "Collected",
+      label: o.paid_via ? `Paid · ${PAID_VIA_LABEL[o.paid_via]}` : "Paid at handover",
+      detail: "In person",
       tone: "paid",
     };
   }

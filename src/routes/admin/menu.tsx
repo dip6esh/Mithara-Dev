@@ -1371,18 +1371,23 @@ function AdminMenuPage() {
         {showPrices && (
           <ModalBackdrop onClose={() => setShowPrices(false)}>
             <div className="adm-modal relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-neutral-200 shadow-2xl">
-              <button
-                onClick={() => setShowPrices(false)}
-                className="absolute top-6 right-6 rounded-lg p-1 text-neutral-400 transition-all hover:rotate-90 hover:bg-neutral-800 hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
-
-              <h2 className="font-serif text-xl font-bold text-neutral-100">Structured Prices</h2>
-              <p className="mt-1 text-xs text-neutral-400">
-                These amounts are the source of truth for checkout totals. Update a price to change what
-                customers pay.
-              </p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="font-serif text-xl font-bold text-neutral-100">Structured Prices</h2>
+                  <p className="mt-1 text-xs text-neutral-400">
+                    These amounts are the source of truth for checkout totals. Update a price to change what
+                    customers pay.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={setShowPrices(false)}
+                  aria-label="Close"
+                  className="-mr-2 -mt-1 shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
 
               {variantsLoading ? (
                 <p className="py-10 text-center text-xs text-neutral-500">Loading prices…</p>
@@ -1474,19 +1479,24 @@ function AdminMenuPage() {
           <ModalBackdrop onClose={() => setIsModalOpen(false)}>
             <div
               className="adm-modal relative max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-neutral-800 bg-neutral-900 p-5 text-neutral-200 shadow-2xl sm:p-6">
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="absolute top-6 right-6 rounded-lg p-1 text-neutral-400 transition-all hover:rotate-90 hover:bg-neutral-800 hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
-
-              <h2 className="font-serif text-xl font-bold text-neutral-100">
-                {editingProduct.id ? "Edit Delicacy" : "Create New Delicacy"}
-              </h2>
-              <p className="mt-1 text-xs text-neutral-400">
-                Configure details that appear on the customer website
-              </p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="font-serif text-xl font-bold text-neutral-100">
+                    {editingProduct.id ? "Edit Delicacy" : "Create New Delicacy"}
+                  </h2>
+                  <p className="mt-1 text-xs text-neutral-400">
+                    Configure details that appear on the customer website
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={setIsModalOpen(false)}
+                  aria-label="Close"
+                  className="-mr-2 -mt-1 shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
 
               <form onSubmit={handleSaveModal} className="mt-6 space-y-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

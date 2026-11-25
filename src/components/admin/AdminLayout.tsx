@@ -3,6 +3,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   ShoppingBag,
+  ChefHat,
   Users,
   FileText,
   TrendingUp,
@@ -17,7 +18,8 @@ import {
 } from "lucide-react";
 import { useAuth, signOut } from "../../lib/auth";
 import { supabase } from "../../lib/supabase";
-import { unwrapSetting } from "../../lib/settings";
+import { SETTINGS_CACHE_KEY, cacheSet } from "../../lib/adminCache";
+import { unwrapSetting, isStoreClosed, DEFAULT_STORE_SETTINGS } from "../../lib/settings";
 import { AdminGuard } from "./AdminGuard";
 import { NewOrderAlert, OrderSoundToggle } from "./NewOrderAlert";
 import { LowStockWatcher } from "./LowStockAlert";
@@ -33,6 +35,7 @@ const NAV_GROUPS = [
     items: [
       { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
       { label: "Orders", href: "/admin/orders", icon: ShoppingBag },
+      { label: "Kitchen", href: "/admin/kitchen", icon: ChefHat },
       { label: "Customers", href: "/admin/customers", icon: Users },
       { label: "Invoices", href: "/admin/invoices", icon: FileText },
     ],
@@ -59,7 +62,22 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const shownPath = useRouterState({ select: (s) => (s.resolvedLocation ?? s.location).pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [newOrdersCount, setNewOrdersCount] = useState<number>(0);
-  const [holidayMode, setHolidayMode] = useState<boolean>(false);
+  const [manualClosed, setManualClosed] = useState<boolean>(false);
+  const [cutoffTime, setCutoffTime] = useState<string>("");
+  const [reopenTime, setReopenTime] = useState<string>("");
+  // Re-evaluate the cutoff window every 20 s so the pill flips the moment the cutoff passes.
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setClockTick((n) => n + 1), 20_000);
+    return () => clearInterval(t);
+  }, []);
+  // Closed by the holiday switch OR currently inside the cutoff window.
+  const holidayMode = isStoreClosed({
+    ...DEFAULT_STORE_SETTINGS,
+    holiday_mode: manualClosed,
+    order_cutoff_time: cutoffTime,
+    order_reopen_time: reopenTime,
+  }).closed;
   // Desktop only: collapse the sidebar to an icon rail. Remembered between visits.
   const [collapsed, setCollapsed] = useState(false);
 
@@ -99,15 +117,18 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     };
 
     const fetchHoliday = async () => {
-      const { data: setting } = await supabase
+      const { data: rows } = await supabase
         .from("site_settings")
-        .select("value")
-        .eq("key", "holiday_mode")
-        .maybeSingle();
+        .select("key, value");
+      // The table is tiny. Keep every row so the Settings page can open instantly.
+      if (rows) cacheSet(SETTINGS_CACHE_KEY, rows);
 
-      if (setting?.value !== undefined) {
-        setHolidayMode(unwrapSetting(setting.value) === true);
-      }
+      rows?.forEach((row) => {
+        const val = unwrapSetting(row.value);
+        if (row.key === "holiday_mode") setManualClosed(val === true);
+        if (row.key === "order_cutoff_time") setCutoffTime(typeof val === "string" ? val : "");
+        if (row.key === "order_reopen_time") setReopenTime(typeof val === "string" ? val : "");
+      });
     };
 
     fetchQuickStats();

@@ -12,16 +12,18 @@ import {
   ShoppingBag,
   Clock,
   ArrowRight,
-  MessageSquare,
   CheckCircle2,
   Package,
   PackageX,
   RefreshCw,
+  ChefHat,
 } from "lucide-react";
+import { WhatsAppButton } from "../../components/admin/WhatsAppButton";
 import { toast } from "sonner";
 import { CountUp } from "../../components/admin/CountUp";
 import { StatCard } from "../../components/admin/StatCard";
 import { refreshDailyStock } from "../../lib/dailyStock";
+import { kitchenStatusOf } from "../../lib/kitchen";
 import { LowStockPanel, refreshStockAlerts } from "../../components/admin/LowStockAlert";
 
 export const Route = createFileRoute("/admin/dashboard")({
@@ -159,6 +161,9 @@ function AdminDashboardPage() {
     .filter((o) => o.payment_status !== "paid")
     .reduce((sum, o) => sum + (o.total_inr || 0), 0);
   const countBy = (s: string) => orders.filter((o) => o.status === s).length;
+  // Kitchen progress of the orders still waiting to be handed over (live: this page refetches on every order change).
+  const kitchenCount = (k: "new" | "preparing" | "ready") =>
+    actionOrders.filter((o) => kitchenStatusOf(o) === k).length;
 
   const activeProducts = products.filter((p) => p.status === "active");
   const soldOutProducts = products.filter(
@@ -234,6 +239,30 @@ function AdminDashboardPage() {
 
         {/* Items at or below their low-stock alert number (set per item in Menu Control) */}
         <LowStockPanel />
+
+        {/* Kitchen snapshot: the full board lives on /admin/kitchen */}
+        <Link
+          to="/admin/kitchen"
+          className="adm-panel group/kd flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-sm sm:px-5"
+        >
+          <span className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#d39c54]/15 text-[#a8691d]">
+              <ChefHat className="h-[18px] w-[18px]" aria-hidden="true" />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold text-foreground">In the kitchen</span>
+              <span className="block text-xs text-muted-foreground">
+                {actionOrders.length === 0 ? "Nothing to cook right now" : "Live from the kitchen display"}
+              </span>
+            </span>
+          </span>
+          <span className="flex items-center gap-2 text-xs font-semibold">
+            <span className="rounded-full bg-[#d39c54]/15 px-2.5 py-1 text-[#9a6420]">{kitchenCount("new")} new</span>
+            <span className="rounded-full bg-[#282345]/10 px-2.5 py-1 text-[#282345]">{kitchenCount("preparing")} preparing</span>
+            <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-700">{kitchenCount("ready")} ready</span>
+            <ArrowRight className="h-3.5 w-3.5 text-[#a8691d] transition-transform duration-300 group-hover/kd:translate-x-1" aria-hidden="true" />
+          </span>
+        </Link>
 
         {/* Hero + stats */}
         <div className="grid gap-4 lg:grid-cols-12">
@@ -442,16 +471,7 @@ function AdminDashboardPage() {
                           </p>
                         </div>
                         <div className="flex items-center gap-2 max-sm:ml-auto">
-                          <a
-                            href={waUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title="Message customer on WhatsApp"
-                            aria-label="Message customer on WhatsApp"
-                            className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 transition-all hover:scale-110 hover:bg-emerald-500/20"
-                          >
-                            <MessageSquare className="h-4 w-4" />
-                          </a>
+                          <WhatsAppButton href={waUrl} label="Message customer on WhatsApp" />
                           {order.payment_status === "paid" ? (
                             <button
                               onClick={() => handleHandover(order)}

@@ -25,6 +25,7 @@ import {
   AlertCircle,
   X,
 } from "lucide-react";
+import { WhatsAppButton } from "../../components/admin/WhatsAppButton";
 import { toast } from "sonner";
 import { ModalBackdrop } from "../../components/ModalBackdrop";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
@@ -592,15 +593,7 @@ function AdminOrdersPage() {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex items-center justify-end gap-1.5">
-                            <a
-                              href={waUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Message on WhatsApp"
-                              className="rounded-lg p-1.5 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-                            >
-                              <MessageSquare className="h-4 w-4" />
-                            </a>
+                            <WhatsAppButton href={waUrl} size="sm" />
                             <button
                               onClick={() => setSelectedOrder(order)}
                               title="View Order Details"
@@ -641,13 +634,17 @@ function AdminOrdersPage() {
         {selectedOrder && (
           <ModalBackdrop onClose={() => setSelectedOrder(null)}>
             <div className="adm-modal relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-neutral-200 shadow-2xl">
-              {/* Close Button */}
-              <button
-                onClick={() => setSelectedOrder(null)}
-                className="absolute top-6 right-6 rounded-lg p-1 text-neutral-400 hover:bg-neutral-800 hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              {/* Close bar: its own row, pinned while the pop-up scrolls, so it never covers the details below */}
+              <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-3 flex justify-end rounded-t-3xl bg-neutral-900/95 px-4 pt-4 pb-1 backdrop-blur-sm">
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrder(null)}
+                  aria-label="Close"
+                  className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-foreground"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
 
               {/* Modal Header */}
               <div className="mb-6 flex flex-wrap items-center justify-between gap-2 border-b border-neutral-800 pb-4">
@@ -831,15 +828,10 @@ function AdminOrdersPage() {
                     <span className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
                       Customer
                     </span>
-                    <a
+                    <WhatsAppButton
                       href={`https://wa.me/${selectedOrder.customer_phone.replace(/[^0-9]/g, "")}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-emerald-400 hover:underline"
-                    >
-                      <MessageSquare className="h-3 w-3" />
-                      <span>WhatsApp</span>
-                    </a>
+                      size="sm"
+                    />
                   </div>
                   <div className="text-sm font-semibold text-neutral-200">
                     {selectedOrder.customer_name}
@@ -1022,12 +1014,17 @@ function AdminOrdersPage() {
         {showCreateModal && (
           <ModalBackdrop onClose={() => setShowCreateModal(false)}>
             <div className="adm-modal relative w-full max-w-lg rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-neutral-200 shadow-2xl">
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="absolute top-6 right-6 text-neutral-400 hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              {/* Close bar: its own row, pinned while the pop-up scrolls, so it never covers the details below */}
+              <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-3 flex justify-end rounded-t-3xl bg-neutral-900/95 px-4 pt-4 pb-1 backdrop-blur-sm">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  aria-label="Close"
+                  className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-foreground"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
 
               <h2 className="font-serif text-xl font-bold text-neutral-100">
                 Create Manual Phone / Walk-in Order

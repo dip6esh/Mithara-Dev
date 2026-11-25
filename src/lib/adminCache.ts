@@ -8,6 +8,9 @@
  */
 import { useCallback, useState } from "react";
 
+/** Shared keys: one screen can warm another's cache so it opens instantly the first time too. */
+export const SETTINGS_CACHE_KEY = "admin:settings:rows";
+
 const store = new Map<string, unknown>();
 
 export const hasCache = (key: string) => store.has(key);

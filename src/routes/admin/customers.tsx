@@ -7,7 +7,6 @@ import { Order, CustomerAddress } from "../../lib/types";
 import {
   Users,
   Search,
-  MessageSquare,
   ShoppingBag,
   MapPin,
   Calendar,
@@ -18,6 +17,7 @@ import {
   Mail,
   ChevronRight,
 } from "lucide-react";
+import { WhatsAppButton } from "../../components/admin/WhatsAppButton";
 import { toast } from "sonner";
 import { ModalBackdrop } from "../../components/ModalBackdrop";
 
@@ -247,15 +247,7 @@ function AdminCustomersPage() {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex items-center justify-end gap-1.5">
-                            <a
-                              href={waUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Message on WhatsApp"
-                              className="rounded-lg p-1.5 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
-                            >
-                              <MessageSquare className="h-4 w-4" />
-                            </a>
+                            <WhatsAppButton href={waUrl} size="sm" />
                             <button
                               onClick={() => setSelectedCustomer(cust)}
                               className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-800 hover:text-amber-300"
@@ -277,12 +269,17 @@ function AdminCustomersPage() {
         {selectedCustomer && (
           <ModalBackdrop onClose={() => setSelectedCustomer(null)}>
             <div className="adm-modal relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-neutral-800 bg-neutral-900 p-6 text-neutral-200 shadow-2xl">
-              <button
-                onClick={() => setSelectedCustomer(null)}
-                className="absolute top-6 right-6 text-neutral-400 hover:text-foreground"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              {/* Close bar: its own row, pinned while the pop-up scrolls, so it never covers the details below */}
+              <div className="sticky top-0 z-10 -mx-6 -mt-6 mb-3 flex justify-end rounded-t-3xl bg-neutral-900/95 px-4 pt-4 pb-1 backdrop-blur-sm">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCustomer(null)}
+                  aria-label="Close"
+                  className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-foreground"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
 
               {/* Customer Profile Header */}
               <div className="mb-6 border-b border-neutral-800 pb-4">
@@ -305,15 +302,9 @@ function AdminCustomersPage() {
                     </div>
                   </div>
 
-                  <a
+                  <WhatsAppButton
                     href={`https://wa.me/${selectedCustomer.phone.replace(/[^0-9]/g, "")}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25"
-                  >
-                    <MessageSquare className="h-3.5 w-3.5" />
-                    <span>WhatsApp</span>
-                  </a>
+                  />
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">

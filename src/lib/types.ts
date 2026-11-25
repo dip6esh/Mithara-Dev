@@ -80,6 +80,13 @@ export type CustomerAddress = {
  */
 export type OrderStatus = "pending_payment" | "new" | "completed" | "cancelled";
 
+/**
+ * Kitchen Display progress, only meaningful while status === "new" (migration 012).
+ * Kept apart from OrderStatus so revenue, invoices and stock never depend on it.
+ * null / missing = nothing started yet (same as "new").
+ */
+export type KitchenStatus = "new" | "preparing" | "ready";
+
 export type PaymentStatus = "unpaid" | "partial" | "paid";
 
 /** What the customer chose at checkout. "cash" means pay at handover (cash or UPI). */
@@ -119,6 +126,11 @@ export type Order = {
   /** Set when the order is paid (online at checkout, or at handover). Migration 005. */
   paid_via?: PaidVia | null;
   paid_at?: string | null;
+  /** Kitchen Display progress (migration 012). Optional so un-migrated DBs still type-check. */
+  kitchen_status?: KitchenStatus | null;
+  kitchen_status_at?: string | null;
+  /** Set when anyone on the team acknowledged the new-order pop-up (migration 013). */
+  alert_seen_at?: string | null;
   delivery_type: DeliveryType;
   address_snapshot: Partial<CustomerAddress> | null;
   notes: string | null;

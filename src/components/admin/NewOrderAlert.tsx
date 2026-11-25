@@ -13,6 +13,9 @@ import {
   unlockAudio,
   useSoundEnabled,
 } from "../../lib/orderSound";
+import { hasSeenOrder, markOrdersSeenForTeam } from "../../lib/seenOrders";
+import { cacheSet } from "../../lib/adminCache";
+import { KITCHEN_CACHE_KEY } from "../../lib/kitchen";
 import type { Order } from "../../lib/types";
 
 /* ------------------------------------------------------------------ */
@@ -37,6 +40,7 @@ const subscribe = (l: () => void) => {
 };
 
 function dismissAll() {
+  markOrdersSeenForTeam(queue.map((o) => o.id));
   queue = EMPTY;
   arrivedAt.clear();
   stopRinging();
@@ -45,6 +49,7 @@ function dismissAll() {
 
 /** Acknowledge one order. The rest stay on screen; the bell stops only once none are left. */
 function dismissOne(id: string) {
+  markOrdersSeenForTeam([id]);
   const next = queue.filter((o) => o.id !== id);
   arrivedAt.delete(id);
   queue = next.length > 0 ? next : EMPTY;
@@ -53,9 +58,20 @@ function dismissOne(id: string) {
 }
 
 /**
- * Looks for "Order received" orders. Anything already waiting when the page first loads is shown too
- * (a refresh or a restart must never hide an unattended order). Orders that someone has accepted
- * elsewhere drop out of the popup on the next check.
+ * An order the team has already dealt with: acknowledged by anyone on the team (alert_seen_at) or on this
+ * browser (Got it / Dismiss / View orders, or any tap on the Kitchen board), or already being prepared /
+ * ready on the kitchen board. These never pop up or ring again, not even after a refresh.
+ */
+const alreadyHandled = (o: Order) =>
+  !!o.alert_seen_at ||
+  hasSeenOrder(o.id) ||
+  o.kitchen_status === "preparing" ||
+  o.kitchen_status === "ready";
+
+/**
+ * Looks for "Order received" orders that nobody has acknowledged yet. A refresh or a restart still shows
+ * an order that was never seen (an unattended order must never be hidden), but not one that was.
+ * Orders handled elsewhere (acknowledged on another device, started in the kitchen) drop out on the next check.
  */
 async function checkForNewOrders() {
   const { data, error } = await supabase
@@ -65,7 +81,10 @@ async function checkForNewOrders() {
     .order("created_at", { ascending: false })
     .limit(QUEUE_LIMIT);
   if (error || !data) return;
-  const rows = data as Order[];
+  const fetched = data as Order[];
+  // This check already loads every open order with its items: hand it to the Kitchen board so it opens instantly.
+  cacheSet(KITCHEN_CACHE_KEY, [...fetched].reverse());
+  const rows = fetched.filter((o) => !alreadyHandled(o));
   const live = new Set(rows.map((o) => o.id));
 
   if (!known) {
@@ -82,7 +101,7 @@ async function checkForNewOrders() {
   const fresh = rows.filter((o) => !known!.has(o.id));
   rows.forEach((o) => known!.add(o.id));
   // Only prune when the list was not cut off by the limit, otherwise an old order could drop out by mistake.
-  const stillWaiting = rows.length < QUEUE_LIMIT ? queue.filter((q) => live.has(q.id)) : queue;
+  const stillWaiting = fetched.length < QUEUE_LIMIT ? queue.filter((q) => live.has(q.id)) : queue;
   const pruned = stillWaiting.length !== queue.length;
   if (pruned) queue.filter((q) => !live.has(q.id)).forEach((q) => arrivedAt.delete(q.id));
 

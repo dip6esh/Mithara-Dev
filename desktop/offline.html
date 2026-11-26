@@ -1,0 +1,6 @@
+<!doctype html><meta charset="utf-8"><title>Mithara Admin</title>
+<style>body{font-family:Segoe UI,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;background:#faf6ee;color:#333;text-align:center}
+button{margin-top:16px;padding:10px 22px;border:0;border-radius:999px;background:#b8923a;color:#fff;font-size:15px;cursor:pointer}</style>
+<div><h1>Can’t reach Mithara</h1><p>Check your internet connection, then try again.</p>
+<button onclick="history.length>1?history.back():location.reload()">Try again</button></div>
+<script>setInterval(()=>fetch('https://www.gstatic.com/generate_204',{mode:'no-cors'}).then(()=>history.back()).catch(()=>{}),5000)</script>

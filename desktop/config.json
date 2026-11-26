@@ -1,0 +1,4 @@
+{
+  "appUrl": "https://YOUR-DEPLOYED-SITE.vercel.app",
+  "startPath": "/admin"
+}

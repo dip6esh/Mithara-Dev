@@ -28,7 +28,7 @@ import {
 } from "../../lib/kitchen";
 import { formatINR } from "../../lib/enquiry";
 import { paymentSummary } from "../../lib/orderFlow";
-import { KOT_SIZE_LABEL, printKot, type KotWidth } from "../../lib/kot";
+import { KOT_SIZE_LABEL, printKotSaved, useKotWidth } from "../../lib/kot";
 import type { KitchenStatus, Order } from "../../lib/types";
 
 export const Route = createFileRoute("/admin/kitchen")({
@@ -277,6 +277,7 @@ function Ticket({
   onMove: (next: KitchenStatus) => void;
 }) {
   const st = STAGE[status];
+  const kotWidth = useKotWidth();
   // "Ready" tickets are collapsed to a slim card (they only wait for the customer); tap to see the items.
   const [expanded, setExpanded] = useState(false);
   const collapsed = status === "ready" && !expanded;
@@ -445,21 +446,17 @@ function Ticket({
 
         <div className="mt-3">{payPill}</div>
 
-        {/* Print the kitchen slip: pick the size that matches the printer roll */}
-        <div className="mt-3 flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">Print KOT</span>
-          {(["58", "80"] as KotWidth[]).map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => printKot(order, w)}
-              aria-label={`Print KOT on ${KOT_SIZE_LABEL[w]} paper`}
-              className="adm-no-lift inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-[#d39c54]"
-            >
-              <Printer className="h-3.5 w-3.5" aria-hidden="true" />
-              {KOT_SIZE_LABEL[w]}
-            </button>
-          ))}
+        {/* Print the kitchen slip (paper size is chosen once in Settings → KOT printing) */}
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={() => printKotSaved(order)}
+            title={`Print KOT on ${KOT_SIZE_LABEL[kotWidth]} paper (change in Settings)`}
+            className="adm-no-lift inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-[#d39c54]"
+          >
+            <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+            Print KOT
+          </button>
         </div>
 
         <div className="mt-3 flex items-center gap-2">

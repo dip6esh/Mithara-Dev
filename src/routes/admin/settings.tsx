@@ -25,7 +25,7 @@ import { WhatsAppIcon } from "../../components/admin/WhatsAppButton";
 import { toast } from "sonner";
 import { unwrapSetting, isStoreClosed, DEFAULT_STORE_SETTINGS } from "../../lib/settings";
 import { formatINR } from "../../lib/enquiry";
-import { KOT_PAGE_MM, KOT_SIZE_LABEL, buildKotHtml, printKot, sampleKotOrder, type KotWidth } from "../../lib/kot";
+import { KOT_PAGE_MM, KOT_SIZE_LABEL, buildKotHtml, printKot, sampleKotOrder, setKotWidth, useKotWidth, type KotWidth } from "../../lib/kot";
 import {
   DEFAULT_VOLUME,
   isAudioBlocked,
@@ -999,10 +999,10 @@ function SoundSettings() {
  * paper size and text before the store opens. Uses a made-up order that is clearly marked as a test.
  */
 function KotTestSettings() {
-  const [width, setWidth] = useState<KotWidth>("58");
+  const width = useKotWidth();
   const [sample] = useState(() => sampleKotOrder());
   const [height, setHeight] = useState(520);
-  const html = buildKotHtml(sample, width, false);
+  const html = buildKotHtml(sample, width);
   const sizes: KotWidth[] = ["58", "80"];
 
   return (
@@ -1010,10 +1010,13 @@ function KotTestSettings() {
       id="kot"
       tone="violet"
       icon={Printer}
-      title="KOT printing test"
-      description="Check the kitchen slip on screen and print a test slip before you open."
+      title="KOT printing"
+      description="Choose your paper size, then check the slip and print a test before you open."
     >
-      <SubHeading>Preview</SubHeading>
+      <Field
+        label="Paper size"
+        hint="Choose the roll in your printer. The Kitchen's Print KOT button uses this size. It is saved on this device, so set it on the one with the printer."
+      >
       <div role="radiogroup" aria-label="Paper size" className="inline-flex rounded-full bg-[#f1eff8] p-0.5">
         {sizes.map((w) => (
           <button
@@ -1021,7 +1024,7 @@ function KotTestSettings() {
             type="button"
             role="radio"
             aria-checked={width === w}
-            onClick={() => setWidth(w)}
+            onClick={() => setKotWidth(w)}
             className={`adm-no-lift rounded-full px-4 py-1.5 text-xs font-bold transition-colors ${
               width === w ? "bg-[#282345] text-white" : "text-[#6b6488] hover:text-[#1c1733]"
             }`}
@@ -1030,7 +1033,9 @@ function KotTestSettings() {
           </button>
         ))}
       </div>
+      </Field>
 
+      <SubHeading>Preview</SubHeading>
       <div className="overflow-x-auto rounded-xl border border-[#d3cde4] bg-[#f4f2fa] p-3">
         <iframe
           key={width}
@@ -1046,24 +1051,19 @@ function KotTestSettings() {
       </div>
 
       <SubHeading>Print a test slip</SubHeading>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {sizes.map((w) => (
-          <button
-            key={w}
-            type="button"
-            onClick={() => printKot(sample, w)}
-            className="adm-no-lift flex items-center gap-3 rounded-xl border border-[#d3cde4] bg-white px-3.5 py-2.5 text-left transition-colors hover:border-[#d39c54]"
-          >
-            <Printer className="h-4 w-4 shrink-0 text-[#7c3aed]" aria-hidden="true" />
-            <span className="min-w-0">
-              <span className="block text-[13px] font-semibold text-neutral-100">Print test · {KOT_SIZE_LABEL[w]}</span>
-              <span className="block truncate text-[11px] text-neutral-500">
-                {w === "58" ? "58 mm roll" : "80 mm roll"}
-              </span>
-            </span>
-          </button>
-        ))}
-      </div>
+      <button
+        type="button"
+        onClick={() => printKot(sample, width)}
+        className="adm-no-lift inline-flex items-center gap-3 rounded-xl border border-[#d3cde4] bg-white px-3.5 py-2.5 text-left transition-colors hover:border-[#d39c54]"
+      >
+        <Printer className="h-4 w-4 shrink-0 text-[#7c3aed]" aria-hidden="true" />
+        <span className="min-w-0">
+          <span className="block text-[13px] font-semibold text-neutral-100">Print test slip</span>
+          <span className="block truncate text-[11px] text-neutral-500">
+            {KOT_SIZE_LABEL[width]} paper ({width} mm roll)
+          </span>
+        </span>
+      </button>
 
       <Callout tone="info" icon={AlertCircle}>
         Check the printed slip: nothing is cut off on the left or right (both side lines of the edge box are visible),

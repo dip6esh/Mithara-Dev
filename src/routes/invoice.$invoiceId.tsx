@@ -88,10 +88,25 @@ function InvoicePage() {
   const isVoid = invoice.status === "void";
 
   return (
-    <div className="min-h-screen bg-neutral-100 px-3 py-6 text-neutral-900 print:bg-white print:p-0">
+    <div className="inv-root min-h-screen bg-neutral-100 px-3 py-6 text-neutral-900 print:bg-white print:p-0">
       <style>{`
         @page { size: A4; margin: 12mm; }
-        @media print { .inv-sheet { box-shadow: none !important; border: 0 !important; } * { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+        @media print {
+          * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+          html, body { background: #fff !important; height: auto !important; min-height: 0 !important; }
+          /* min-h-screen made a phone print a blank second page: no minimum height on paper */
+          .inv-root { min-height: 0 !important; padding: 0 !important; background: #fff !important; }
+          .inv-sheet { box-shadow: none !important; border: 0 !important; border-radius: 0 !important; padding: 0 !important; max-width: none !important; width: 100% !important; overflow: visible !important; }
+          /* Always print the wide (desktop) layout, even when opened from a phone */
+          .inv-head { flex-direction: row !important; justify-content: space-between !important; align-items: flex-start !important; gap: 16px !important; padding-bottom: 12px !important; }
+          .inv-head-r { text-align: right !important; }
+          .inv-row { justify-content: flex-end !important; }
+          .inv-parties { grid-template-columns: 1fr 1fr !important; padding-top: 12px !important; padding-bottom: 12px !important; }
+          .inv-party-r { text-align: right !important; }
+          .inv-sheet table { min-width: 0 !important; }
+          .inv-sheet section { padding-top: 10px !important; padding-bottom: 10px !important; }
+          .inv-sheet tr, .inv-sheet section, .inv-sheet footer { break-inside: avoid; page-break-inside: avoid; }
+        }
       `}</style>
 
       {/* Toolbar (not printed) */}
@@ -122,7 +137,7 @@ function InvoicePage() {
         )}
 
         {/* Header */}
-        <header className="flex flex-col gap-5 border-b-2 border-[#282345] pb-5 sm:flex-row sm:items-start sm:justify-between">
+        <header className="inv-head flex flex-col gap-5 border-b-2 border-[#282345] pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#282345]">
               <img src={logoIcon} alt="" className="h-8 w-8 object-contain" />
@@ -137,20 +152,20 @@ function InvoicePage() {
             </div>
           </div>
 
-          <div className="text-xs sm:text-right">
+          <div className="inv-head-r text-xs sm:text-right">
             <p className="font-serif text-2xl font-bold uppercase tracking-wide text-[#282345]">
               {DOC_TITLE[invoice.doc_type]}
             </p>
             <dl className="mt-2 space-y-0.5 text-neutral-600">
-              <div className="flex gap-2 sm:justify-end">
+              <div className="inv-row flex gap-2 sm:justify-end">
                 <dt>Invoice no.</dt>
                 <dd className="font-mono font-bold text-neutral-900">{invoice.invoice_number}</dd>
               </div>
-              <div className="flex gap-2 sm:justify-end">
+              <div className="inv-row flex gap-2 sm:justify-end">
                 <dt>Date</dt>
                 <dd className="font-medium text-neutral-900">{fmtDate(invoice.issued_at)}</dd>
               </div>
-              <div className="flex gap-2 sm:justify-end">
+              <div className="inv-row flex gap-2 sm:justify-end">
                 <dt>Order no.</dt>
                 <dd className="font-mono font-medium text-neutral-900">{invoice.order_number}</dd>
               </div>
@@ -169,7 +184,7 @@ function InvoicePage() {
         </header>
 
         {/* Parties */}
-        <section className="grid gap-5 border-b border-neutral-200 py-5 text-xs sm:grid-cols-2">
+        <section className="inv-parties grid gap-5 border-b border-neutral-200 py-5 text-xs sm:grid-cols-2">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">Billed to</p>
             <p className="mt-1 text-sm font-semibold text-neutral-900">{d.buyer.name}</p>
@@ -177,7 +192,7 @@ function InvoicePage() {
             {d.buyer.email && <p className="text-neutral-600">{d.buyer.email}</p>}
             {d.buyer.address && <p className="mt-1 max-w-xs text-neutral-600">{d.buyer.address}</p>}
           </div>
-          <div className="sm:text-right">
+          <div className="inv-party-r sm:text-right">
             <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">Supply details</p>
             <p className="mt-1 capitalize text-neutral-700">{d.buyer.delivery_type}</p>
             {isTax && d.seller.state && (

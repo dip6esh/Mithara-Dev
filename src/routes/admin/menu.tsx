@@ -1381,7 +1381,7 @@ function AdminMenuPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={setShowPrices(false)}
+                  onClick={() => setShowPrices(false)}
                   aria-label="Close"
                   className="-mr-2 -mt-1 shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
                 >
@@ -1490,7 +1490,7 @@ function AdminMenuPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={setIsModalOpen(false)}
+                  onClick={() => setIsModalOpen(false)}
                   aria-label="Close"
                   className="-mr-2 -mt-1 shrink-0 rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
                 >

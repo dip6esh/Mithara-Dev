@@ -571,6 +571,9 @@ html[data-scrolling="true"] .float { animation-play-state: paused; }
    (content loading, a filter shortening the list, a pop-up opening). The scrollbar's space is
    always reserved on admin pages. Older browsers fall back to an always-visible scrollbar. */
 html:has(.admin-theme) { scrollbar-gutter: stable; }
+/* The reserved scrollbar strip is painted with the page's base colour, which is the dark public-site
+   purple. Paint it with the admin's light canvas so no dark band shows when a page doesn't scroll. */
+html:has(.admin-theme) { background-color: #f5f3fa; }
 @supports not (scrollbar-gutter: stable) {
   html:has(.admin-theme) { overflow-y: scroll; }
 }

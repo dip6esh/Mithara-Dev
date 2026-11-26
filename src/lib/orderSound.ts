@@ -37,10 +37,55 @@ function getCtx(): AudioContext | null {
   return ctx;
 }
 
-/** Call from any click / tap / key press so the browser allows sound later. */
+/* ───────────── iPhone / iPad (Safari) ─────────────
+ * iOS is stricter than other browsers in three ways, and all three silenced the alerts:
+ *  1. Sound is only unlocked by a *finished* tap (touchend / click). `pointerdown` does not count.
+ *  2. Web Audio follows the ringer (silent) switch, so with the switch down nothing plays. Playing a
+ *     silent <audio> element (and setting the audio session to "playback") moves the page onto the
+ *     media channel, which ignores the switch.
+ *  3. After a screen lock, a call or switching apps, iOS sets the context to "interrupted" (not just
+ *     "suspended"), and it only comes back after another tap.
+ */
+const SILENT_WAV = "data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";
+let keepAlive: HTMLAudioElement | null = null;
+
+function enablePlaybackSession() {
+  try {
+    const nav = navigator as Navigator & { audioSession?: { type: string } };
+    if (nav.audioSession) nav.audioSession.type = "playback";
+  } catch {
+    /* not supported: the silent <audio> below does the job */
+  }
+  if (typeof Audio === "undefined" || !readEnabled()) return;
+  try {
+    if (!keepAlive) {
+      keepAlive = new Audio(SILENT_WAV);
+      keepAlive.loop = true;
+      keepAlive.setAttribute("playsinline", "");
+    }
+    if (keepAlive.paused) void keepAlive.play().catch(() => {});
+  } catch {
+    /* the alert may still work with the ringer on */
+  }
+}
+
+/** Call from any tap / click / key press so the browser allows sound later. Safe to call repeatedly. */
 export function unlockAudio() {
   const c = getCtx();
-  if (c && c.state === "suspended") void c.resume().catch(() => {});
+  if (!c) return;
+  const keepAliveNeeded = readEnabled() && (!keepAlive || keepAlive.paused);
+  if (c.state === "running" && !keepAliveNeeded) return;
+  enablePlaybackSession();
+  if (c.state !== "running") void c.resume().catch(() => {});
+  try {
+    // A one-sample silent sound played inside the tap fully unlocks Web Audio on iOS.
+    const src = c.createBufferSource();
+    src.buffer = c.createBuffer(1, 1, 22050);
+    src.connect(c.destination);
+    src.start(0);
+  } catch {
+    /* ignore */
+  }
 }
 
 /** true while the browser is still blocking sound (nobody has interacted with the page yet). */
@@ -68,6 +113,11 @@ export function setSoundEnabled(on: boolean) {
   if (!on) {
     stopRinging();
     stopSounds();
+    try {
+      keepAlive?.pause();
+    } catch {
+      /* ignore */
+    }
   }
   subs.forEach((l) => l());
 }
@@ -202,7 +252,7 @@ function outputNode(c: AudioContext, level = 1): AudioNode {
 export function playOrderChime(): boolean {
   const c = getCtx();
   if (!c) return false;
-  if (c.state === "suspended") void c.resume().catch(() => {});
+  if (c.state !== "running") void c.resume().catch(() => {});
 
   const master = c.createGain();
   master.gain.value = 0.85;
@@ -301,7 +351,7 @@ export function playStockAlertSound(): boolean {
   if (typeof window === "undefined" || !readEnabled()) return false;
   const c = getCtx();
   if (!c) return false;
-  if (c.state === "suspended") void c.resume().catch(() => {});
+  if (c.state !== "running") void c.resume().catch(() => {});
 
   const master = c.createGain();
   master.gain.value = 0.8;
@@ -350,7 +400,7 @@ export function playReadyOrderSound(): boolean {
   if (typeof window === "undefined" || !readEnabled()) return false;
   const c = getCtx();
   if (!c) return false;
-  if (c.state === "suspended") void c.resume().catch(() => {});
+  if (c.state !== "running") void c.resume().catch(() => {});
 
   const master = c.createGain();
   master.gain.value = 0.75;

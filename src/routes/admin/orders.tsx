@@ -595,7 +595,7 @@ function AdminOrdersPage() {
                               order.notes ||
                               "—"}
                           </div>
-                          {customerNote(order) && (
+                          {(customerNote(order) || order.order_items?.some((i) => i.note)) && (
                             <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-neutral-800 bg-neutral-950 px-2 py-0.5 text-[10px] font-semibold text-neutral-200">
                               <MessageSquare className="h-3 w-3 text-amber-500" aria-hidden="true" />
                               Customer note
@@ -1025,7 +1025,7 @@ function AdminOrdersPage() {
                         )}
                         <span className="text-amber-400 ml-2">× {item.qty}</span>
                         {item.note && (
-                          <p className="text-[11px] text-neutral-400 italic">"{item.note}"</p>
+                          <p className="mt-0.5 border-l-2 border-amber-500 pl-2 text-xs font-medium text-amber-300">Note: {item.note}</p>
                         )}
                       </div>
                       <span className="font-mono font-semibold text-neutral-200">
@@ -1098,7 +1098,7 @@ function AdminOrdersPage() {
               {/* Private Admin Notes */}
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
-                  Private Kitchen / Admin Notes
+                  Staff note (shown on Kitchen and KOT)
                 </label>
                 <div className="flex gap-2">
                   <input

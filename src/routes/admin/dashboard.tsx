@@ -217,10 +217,10 @@ function AdminDashboardPage() {
                 year: "numeric",
               })}
             </p>
-            <h1 className="mt-1 font-serif text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            <h1 className="mt-1 font-serif text-2xl font-bold tracking-tight text-neutral-100 sm:text-3xl">
               {greeting}
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-xs text-neutral-400">
               {actionOrders.length > 0
                 ? `${actionOrders.length} order${actionOrders.length > 1 ? "s" : ""} need your attention.`
                 : "The kitchen is all caught up."}

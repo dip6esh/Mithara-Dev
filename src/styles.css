@@ -4,6 +4,9 @@
 
 /* Remove the 300ms tap delay on iOS Safari for snappy navigation. */
 * { touch-action: manipulation; }
+/* The line above is outside any @layer, so it beats Tailwind's layered `touch-none` utility and let the page
+   scroll while dragging the clock hands (and the menu drag grip). Re-assert it for these elements and their children. */
+.touch-none, .touch-none * { touch-action: none; }
 
 @custom-variant dark (&:is(.dark *));
 

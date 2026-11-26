@@ -1015,10 +1015,10 @@ function AdminMenuPage() {
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="font-serif text-2xl font-semibold tracking-tight text-neutral-100 sm:text-3xl">
+            <h1 className="font-serif text-2xl font-bold tracking-tight text-neutral-100 sm:text-3xl">
               Menu & Stock Control
             </h1>
-            <p className="mt-1 text-sm text-neutral-400">
+            <p className="mt-1 text-xs text-neutral-400">
               Manage recipes, prices, photography, allergen disclosures, and daily batch availability
             </p>
           </div>

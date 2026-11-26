@@ -2,17 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
-  ChefHat,
   ChevronDown,
   ChevronUp,
   Clock,
-  CookingPot,
   PackageCheck,
+  Printer,
   RefreshCw,
   Store,
   Truck,
   Undo2,
-  UtensilsCrossed,
 } from "lucide-react";
 import { useKitchenOrders } from "../../hooks/useKitchenOrders";
 import {
@@ -30,6 +28,7 @@ import {
 } from "../../lib/kitchen";
 import { formatINR } from "../../lib/enquiry";
 import { paymentSummary } from "../../lib/orderFlow";
+import { KOT_SIZE_LABEL, printKot, type KotWidth } from "../../lib/kot";
 import type { KitchenStatus, Order } from "../../lib/types";
 
 export const Route = createFileRoute("/admin/kitchen")({
@@ -50,14 +49,13 @@ const STAGE: Record<
   {
     hint: string;
     empty: string;
-    icon: React.ComponentType<{ className?: string }>;
     column: string; // column background + border (kept neutral: the colour lives on the tickets)
     head: string; // column title colour
     dot: string; // small dot / accent bar
     count: string; // count badge
     band: string; // solid colour header band of the ticket
     tabOn: string; // active tab
-    tabOff: string; // inactive tab (dot keeps the colour)
+    tabOff: string; // inactive tab
     action: string; // main action button
     qty: string; // quantity colour on the ticket
   }
@@ -65,13 +63,12 @@ const STAGE: Record<
   new: {
     hint: "Just received",
     empty: "No new orders. Nice and quiet.",
-    icon: UtensilsCrossed,
     column: "border-border bg-muted/40",
     head: "text-[#8a5517]",
     dot: "bg-[#d39c54]",
     count: "bg-[#d39c54] text-[#1c1733]",
     band: "bg-[#d39c54] text-[#1c1733]",
-    tabOn: "border-[#d39c54] bg-[#d39c54]/20 text-[#7d4d12]",
+    tabOn: "border-[#d39c54] bg-[#d39c54] text-[#1c1733] shadow-sm",
     tabOff: "border-border bg-card text-muted-foreground",
     action: "bg-[#6d5fb3] text-white hover:bg-[#5c4fa0]",
     qty: "text-[#a8691d]",
@@ -79,13 +76,12 @@ const STAGE: Record<
   preparing: {
     hint: "On the counter",
     empty: "Nothing being prepared right now.",
-    icon: CookingPot,
     column: "border-border bg-muted/40",
     head: "text-[#4a3f8f]",
     dot: "bg-[#6d5fb3]",
     count: "bg-[#6d5fb3] text-white",
     band: "bg-[#6d5fb3] text-white",
-    tabOn: "border-[#6d5fb3] bg-[#6d5fb3]/15 text-[#4a3f8f]",
+    tabOn: "border-[#6d5fb3] bg-[#6d5fb3] text-white shadow-sm",
     tabOff: "border-border bg-card text-muted-foreground",
     action: "bg-emerald-600 text-white hover:bg-emerald-700",
     qty: "text-[#5c4fa0]",
@@ -93,13 +89,12 @@ const STAGE: Record<
   ready: {
     hint: "Waiting for handover",
     empty: "No orders waiting to be handed over.",
-    icon: PackageCheck,
     column: "border-border bg-muted/40",
     head: "text-emerald-800",
     dot: "bg-emerald-500",
     count: "bg-emerald-600 text-white",
     band: "bg-emerald-600 text-white",
-    tabOn: "border-emerald-500 bg-emerald-500/15 text-emerald-800",
+    tabOn: "border-emerald-600 bg-emerald-600 text-white shadow-sm",
     tabOff: "border-border bg-card text-muted-foreground",
     action: "border border-emerald-600/30 bg-emerald-50 text-emerald-800",
     qty: "text-emerald-700",
@@ -139,7 +134,6 @@ function KitchenPage() {
     return out;
   }, [columns, now]);
 
-  const open = counts.new + counts.preparing + counts.ready;
 
   return (
     // On large screens the board fills the screen and each column scrolls on its own, so a long queue in
@@ -148,15 +142,11 @@ function KitchenPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between lg:shrink-0">
         <div>
-          <p className="text-xs font-medium text-muted-foreground">Kitchen display</p>
-          <h1 className="mt-1 flex items-center gap-2 font-serif text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-            <ChefHat className="h-6 w-6 text-[#d39c54]" aria-hidden="true" />
-            Kitchen
+          <h1 className="font-serif text-2xl font-bold tracking-tight text-neutral-100 sm:text-3xl">
+            Kitchen Display
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {open === 0
-              ? "The kitchen is all caught up."
-              : `${open} order${open > 1 ? "s" : ""} in the kitchen · ${counts.new} to start`}
+          <p className="mt-1 text-xs text-neutral-400">
+            Live board to start, prepare and hand over orders as they come in
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -181,13 +171,18 @@ function KitchenPage() {
               role="tab"
               aria-selected={tab === s}
               onClick={() => setTab(s)}
-              className={`relative rounded-2xl border px-2 py-3 text-sm font-semibold transition-colors ${
+              className={`relative rounded-full border px-2 py-2.5 text-sm font-semibold transition-colors ${
                 tab === s ? st.tabOn : st.tabOff
               }`}
             >
-              <span className={`mr-1.5 inline-block h-2 w-2 rounded-full align-middle ${st.dot}`} aria-hidden="true" />
               {KITCHEN_LABEL[s]}
-              <span className="ml-1.5 rounded-full bg-black/5 px-1.5 py-0.5 text-[11px]">{counts[s]}</span>
+              <span
+                className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[11px] ${
+                  tab === s ? "bg-white text-[#1c1733]" : "bg-black/5"
+                }`}
+              >
+                {counts[s]}
+              </span>
               {lateCount[s] > 0 && (
                 <span
                   className="absolute -top-1 -right-1 flex h-5 min-w-5 animate-pulse items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-bold text-white"
@@ -212,34 +207,31 @@ function KitchenPage() {
         <div className="grid items-start gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-3 lg:grid-rows-[minmax(0,1fr)] lg:items-stretch">
           {KITCHEN_STEPS.map((s) => {
             const st = STAGE[s];
-            const Icon = st.icon;
             return (
               <section
                 key={s}
                 aria-label={KITCHEN_LABEL[s]}
-                className={`${tab === s ? "flex" : "hidden"} min-h-0 flex-col rounded-3xl border p-3 sm:p-4 lg:flex ${st.column}`}
+                className={`${tab === s ? "flex" : "hidden"} min-h-0 flex-col overflow-hidden rounded-3xl border lg:flex ${st.column}`}
               >
-                <header className="mb-1 hidden items-center justify-between px-1 lg:flex">
-                  <div className="flex items-center gap-2">
-                    <span className={`h-2.5 w-2.5 rounded-full ${st.dot}`} aria-hidden="true" />
-                    <h2 className={`flex items-center gap-1.5 font-serif text-lg font-semibold ${st.head}`}>
-                      <Icon className="h-4 w-4" aria-hidden="true" />
-                      {KITCHEN_LABEL[s]}
-                    </h2>
+                {/* Coloured title band across the top of the column (large screens; phones use the tabs) */}
+                <header className={`hidden items-center justify-between gap-2 px-4 py-3 lg:flex ${st.band}`}>
+                  <div className="min-w-0">
+                    <h2 className="font-serif text-lg font-semibold leading-tight">{KITCHEN_LABEL[s]}</h2>
+                    <p className="text-xs opacity-80">{st.hint}</p>
                   </div>
                   <div className="flex items-center gap-1.5">
                     {lateCount[s] > 0 && (
-                      <span className="animate-pulse rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                      <span className="animate-pulse rounded-full bg-rose-600 px-2 py-0.5 text-[11px] font-semibold text-white ring-1 ring-white">
                         {lateCount[s]} late
                       </span>
                     )}
-                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold shadow-sm ${st.count}`}>
+                    <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-[#1c1733] shadow-sm">
                       {columns[s].length}
                     </span>
                   </div>
                 </header>
-                <p className="mb-3 hidden px-1 text-xs text-muted-foreground lg:block">{st.hint}</p>
 
+                <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-4">
                 {columns[s].length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-border bg-card/50 px-4 py-10 text-center text-sm text-muted-foreground">
                     {st.empty}
@@ -261,6 +253,7 @@ function KitchenPage() {
                     ))}
                   </ul>
                 )}
+                </div>
               </section>
             );
           })}
@@ -426,8 +419,9 @@ function Ticket({
                     {i.variant && <span className="ml-1.5 font-normal text-muted-foreground">({i.variant})</span>}
                   </p>
                   {i.note && (
-                    <p className="mt-1 rounded-lg bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-800 italic">
-                      “{i.note}”
+                    <p className="mt-1 rounded-lg border-l-4 border-amber-500 bg-amber-500/15 px-2.5 py-1.5 text-[13px] leading-snug font-semibold text-amber-900">
+                      <span className="mr-1.5 text-[10px] font-bold tracking-wider uppercase opacity-70">Note</span>
+                      {i.note}
                     </p>
                   )}
                 </div>
@@ -438,18 +432,35 @@ function Ticket({
 
         {order.notes && (
           <p className="mt-3 rounded-xl bg-amber-500/15 px-3 py-2 text-xs text-amber-900">
-            <span className="font-semibold">Customer note: </span>
+            <span className="font-semibold">Order note: </span>
             {order.notes}
           </p>
         )}
         {order.admin_notes && (
           <p className="mt-2 rounded-xl bg-[#282345]/8 px-3 py-2 text-xs text-[#282345]">
-            <span className="font-semibold">Kitchen note: </span>
+            <span className="font-semibold">Staff note: </span>
             {order.admin_notes}
           </p>
         )}
 
         <div className="mt-3">{payPill}</div>
+
+        {/* Print the kitchen slip: pick the size that matches the printer roll */}
+        <div className="mt-3 flex items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Print KOT</span>
+          {(["58", "80"] as KotWidth[]).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => printKot(order, w)}
+              aria-label={`Print KOT on ${KOT_SIZE_LABEL[w]} paper`}
+              className="adm-no-lift inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:border-[#d39c54]"
+            >
+              <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+              {KOT_SIZE_LABEL[w]}
+            </button>
+          ))}
+        </div>
 
         <div className="mt-3 flex items-center gap-2">
           {next ? (

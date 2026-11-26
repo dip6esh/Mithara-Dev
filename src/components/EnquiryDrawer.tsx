@@ -318,7 +318,7 @@ function LineRow({ line }: { line: EnquiryLine }) {
             className="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3 text-xs font-medium text-muted-foreground transition-colors hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-            {line.note.trim() ? "Edit note" : "Add note"}
+            {line.note.trim() ? "Edit kitchen note" : "Add kitchen note"}
           </button>
           <button
             type="button"
@@ -338,7 +338,7 @@ function LineRow({ line }: { line: EnquiryLine }) {
           value={line.note}
           onChange={(e) => setNote(line.key, e.target.value)}
           maxLength={MAX_ITEM_NOTE}
-          placeholder="e.g. less sugar, no nuts"
+          placeholder="Note for this item, e.g. less sugar, no nuts"
           aria-label={`Note for ${label}`}
           className="mt-2 w-full rounded-xl border border-border/80 bg-black/20 px-3.5 py-2.5 text-base text-foreground placeholder:text-muted-foreground/50 focus:border-accent focus:outline-none sm:text-sm"
         />
@@ -926,7 +926,7 @@ export function EnquiryDrawer() {
                   maxLength={MAX_NOTES}
                   value={orderNotes}
                   onChange={(e) => setOrderNotes(e.target.value)}
-                  placeholder="Anything we should know? (optional)"
+                  placeholder="Note for the whole order, e.g. packing, timing or delivery instructions (optional)"
                   className={`${field} resize-y`}
                 />
               </section>

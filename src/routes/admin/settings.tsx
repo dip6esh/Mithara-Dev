@@ -19,11 +19,13 @@ import {
   Volume2,
   Volume1,
   VolumeX,
+  Printer,
 } from "lucide-react";
 import { WhatsAppIcon } from "../../components/admin/WhatsAppButton";
 import { toast } from "sonner";
 import { unwrapSetting, isStoreClosed, DEFAULT_STORE_SETTINGS } from "../../lib/settings";
 import { formatINR } from "../../lib/enquiry";
+import { KOT_PAGE_MM, KOT_SIZE_LABEL, buildKotHtml, printKot, sampleKotOrder, type KotWidth } from "../../lib/kot";
 import {
   DEFAULT_VOLUME,
   isAudioBlocked,
@@ -256,8 +258,8 @@ function AdminSettingsPage() {
       {/* Page header */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-100 sm:text-3xl">Settings</h1>
-          <p className="mt-1 text-sm text-neutral-400">
+          <h1 className="font-serif text-2xl font-bold tracking-tight text-neutral-100 sm:text-3xl">Settings</h1>
+          <p className="mt-1 text-xs text-neutral-400">
             Store hours, delivery, tax, invoices and contact details. Changes go live on the storefront when you save.
           </p>
         </div>
@@ -582,6 +584,8 @@ function AdminSettingsPage() {
 
           <SoundSettings />
 
+          <KotTestSettings />
+
           {/* ───────── BUSINESS DETAILS ───────── */}
           <GroupLabel>Business details</GroupLabel>
 
@@ -714,7 +718,10 @@ const NAV_GROUPS: {
   },
   {
     title: "Alerts",
-    items: [{ id: "sound", label: "Sound", icon: Volume2, navColor: "text-[#7c3aed]" }],
+    items: [
+      { id: "sound", label: "Sound", icon: Volume2, navColor: "text-[#7c3aed]" },
+      { id: "kot", label: "KOT printing", icon: Printer, navColor: "text-[#7c3aed]" },
+    ],
   },
   {
     title: "Business details",
@@ -987,6 +994,87 @@ function SoundSettings() {
   );
 }
 
+/**
+ * KOT test: shows the kitchen slip on screen and prints a test slip, so the team can check the printer,
+ * paper size and text before the store opens. Uses a made-up order that is clearly marked as a test.
+ */
+function KotTestSettings() {
+  const [width, setWidth] = useState<KotWidth>("58");
+  const [sample] = useState(() => sampleKotOrder());
+  const [height, setHeight] = useState(520);
+  const html = buildKotHtml(sample, width, false);
+  const sizes: KotWidth[] = ["58", "80"];
+
+  return (
+    <Section
+      id="kot"
+      tone="violet"
+      icon={Printer}
+      title="KOT printing test"
+      description="Check the kitchen slip on screen and print a test slip before you open."
+    >
+      <SubHeading>Preview</SubHeading>
+      <div role="radiogroup" aria-label="Paper size" className="inline-flex rounded-full bg-[#f1eff8] p-0.5">
+        {sizes.map((w) => (
+          <button
+            key={w}
+            type="button"
+            role="radio"
+            aria-checked={width === w}
+            onClick={() => setWidth(w)}
+            className={`adm-no-lift rounded-full px-4 py-1.5 text-xs font-bold transition-colors ${
+              width === w ? "bg-[#282345] text-white" : "text-[#6b6488] hover:text-[#1c1733]"
+            }`}
+          >
+            {KOT_SIZE_LABEL[w]}
+          </button>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-[#d3cde4] bg-[#f4f2fa] p-3">
+        <iframe
+          key={width}
+          title={`KOT preview, ${KOT_SIZE_LABEL[width]} paper`}
+          srcDoc={html}
+          onLoad={(e) => {
+            const h = e.currentTarget.contentDocument?.documentElement.scrollHeight;
+            if (h) setHeight(h + 8);
+          }}
+          style={{ width: `${KOT_PAGE_MM[width]}mm`, height }}
+          className="mx-auto block max-w-full border-0 bg-white shadow-md"
+        />
+      </div>
+
+      <SubHeading>Print a test slip</SubHeading>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {sizes.map((w) => (
+          <button
+            key={w}
+            type="button"
+            onClick={() => printKot(sample, w)}
+            className="adm-no-lift flex items-center gap-3 rounded-xl border border-[#d3cde4] bg-white px-3.5 py-2.5 text-left transition-colors hover:border-[#d39c54]"
+          >
+            <Printer className="h-4 w-4 shrink-0 text-[#7c3aed]" aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-[13px] font-semibold text-neutral-100">Print test · {KOT_SIZE_LABEL[w]}</span>
+              <span className="block truncate text-[11px] text-neutral-500">
+                {w === "58" ? "58 mm roll" : "80 mm roll"}
+              </span>
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <Callout tone="info" icon={AlertCircle}>
+        Check the printed slip: nothing is cut off on the left or right (both side lines of the edge box are visible),
+        the text is dark and easy to read, long names wrap onto the next line, and the paper cuts cleanly after the last
+        line. In the print dialog, choose the thermal printer, set paper to the roll width and margins to None. The test
+        slip is marked “NOT A REAL ORDER” and is never saved.
+      </Callout>
+    </Section>
+  );
+}
+
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 function parseHHMM(v: string): { h: number; m: number } | null {
@@ -1037,6 +1125,19 @@ function TimePicker({
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // iOS Safari can still scroll the page while a finger drags on the clock: block touch scrolling on it.
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!open || !el) return;
+    const stop = (e: TouchEvent) => e.preventDefault();
+    el.addEventListener("touchstart", stop, { passive: false });
+    el.addEventListener("touchmove", stop, { passive: false });
+    return () => {
+      el.removeEventListener("touchstart", stop);
+      el.removeEventListener("touchmove", stop);
     };
   }, [open]);
 

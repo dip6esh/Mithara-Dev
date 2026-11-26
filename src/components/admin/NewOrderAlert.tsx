@@ -206,14 +206,19 @@ export function NewOrderAlert() {
     };
   }, []);
 
-  // Browsers need one click / tap before they allow sound: take the first one anywhere on the page.
+  // Browsers need one tap before they allow sound. iPhones only accept a finished tap (touchend / click),
+  // and drop the permission again after a screen lock or app switch, so keep listening instead of "once".
   useEffect(() => {
     const unlock = () => unlockAudio();
-    window.addEventListener("pointerdown", unlock, { once: true });
-    window.addEventListener("keydown", unlock, { once: true });
+    const events = ["touchend", "click", "pointerup", "keydown"] as const;
+    events.forEach((e) => window.addEventListener(e, unlock, { passive: true }));
+    const onVisible = () => {
+      if (document.visibilityState === "visible") setBlocked(isAudioBlocked());
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
-      window.removeEventListener("pointerdown", unlock);
-      window.removeEventListener("keydown", unlock);
+      events.forEach((e) => window.removeEventListener(e, unlock));
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
@@ -274,7 +279,8 @@ export function NewOrderAlert() {
       aria-modal="true"
       aria-labelledby="new-order-title"
       className="adm-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-[#1c1733]/75 p-4 backdrop-blur-sm"
-      onPointerDown={unlockAudio}
+      onTouchEnd={unlockAudio}
+      onClick={unlockAudio}
     >
       <div className="adm-modal relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-900 text-neutral-200 shadow-2xl">
         <div className="flex items-center gap-4 border-b border-neutral-800 p-5 pr-4">
@@ -304,7 +310,7 @@ export function NewOrderAlert() {
         {blocked && soundOn && (
           <div className="flex items-center gap-2 border-b border-neutral-800 bg-neutral-950 px-5 py-2.5 text-xs text-neutral-200">
             <Volume2 className="h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
-            <span>Your browser is blocking sound. Click anywhere on this window to hear the bell.</span>
+            <span>Your browser is blocking sound. Tap anywhere on this window to hear the bell. On iPhone, also turn the silent switch off.</span>
           </div>
         )}
 
@@ -361,13 +367,20 @@ export function NewOrderAlert() {
                 {o.order_items && o.order_items.length > 0 && (
                   <ul className="mt-3 space-y-1 border-t border-dashed border-neutral-800 pt-3 text-sm">
                     {o.order_items.map((it) => (
-                      <li key={it.id} className="flex justify-between gap-3">
-                        <span className="min-w-0 text-neutral-200">
-                          {it.name}
-                          {it.variant ? <span className="text-neutral-400"> · {it.variant}</span> : null}
-                          <span className="text-neutral-400"> × {it.qty}</span>
-                        </span>
-                        <span className="shrink-0 tabular-nums text-neutral-300">{formatINR(it.unit_price * it.qty)}</span>
+                      <li key={it.id}>
+                        <div className="flex justify-between gap-3">
+                          <span className="min-w-0 text-neutral-200">
+                            {it.name}
+                            {it.variant ? <span className="text-neutral-400"> · {it.variant}</span> : null}
+                            <span className="text-neutral-400"> × {it.qty}</span>
+                          </span>
+                          <span className="shrink-0 tabular-nums text-neutral-300">{formatINR(it.unit_price * it.qty)}</span>
+                        </div>
+                        {it.note && (
+                          <p className="mt-1 rounded-lg border-l-2 border-amber-500 bg-neutral-900 px-2.5 py-1 text-xs font-medium text-amber-300">
+                            Note: {it.note}
+                          </p>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -375,7 +388,7 @@ export function NewOrderAlert() {
 
                 {o.notes && (
                   <p className="mt-3 whitespace-pre-wrap break-words rounded-lg bg-neutral-900 px-3 py-2 text-xs text-neutral-300">
-                    Note: {o.notes}
+                    Order note: {o.notes}
                   </p>
                 )}
 

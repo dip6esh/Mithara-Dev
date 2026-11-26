@@ -1,4 +1,4 @@
 {
-  "appUrl": "https://mitharadev.vercel.app/",
-  "startPath": "/admin"
+  "appUrl": "https://mitharadev.vercel.app",
+  "startPath": "/admin/dashboard"
 }

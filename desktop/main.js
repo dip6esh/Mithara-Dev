@@ -26,12 +26,18 @@ function createWindow() {
     minHeight: 640,
     title: "Mithara Admin",
     icon: path.join(__dirname, "build", "icon.png"),
-    backgroundColor: "#ffffff",
+    backgroundColor: "#282345", // brand purple, so there is never a white flash
+    show: false, // appear only once the splash is painted, not as an empty frame
     autoHideMenuBar: true,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   win.maximize();
-  win.loadURL(START);
+
+  // 1) Show a branded splash instantly from the local disk.
+  // 2) Start loading the real admin behind it.
+  win.once("ready-to-show", () => win.show());
+  win.loadFile(path.join(__dirname, "splash.html"));
+  win.webContents.once("did-finish-load", () => win.loadURL(START));
 
   // Anything outside the admin area (the public site, other sites) opens in the normal browser.
   win.webContents.setWindowOpenHandler(({ url }) => {

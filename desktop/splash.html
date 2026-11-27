@@ -1,11 +1,247 @@
-<!doctype html><meta charset="utf-8"><title>Mithara Admin</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mithara Admin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-html,body{height:100%;margin:0;background:#282345;color:#fff;font-family:Segoe UI,sans-serif}
-body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px}
-img{width:96px;height:96px;object-fit:contain}
-p{margin:0;letter-spacing:.18em;font-size:13px;text-transform:uppercase;opacity:.8}
-.bar{width:140px;height:3px;border-radius:3px;background:rgba(255,255,255,.15);overflow:hidden}
-.bar::after{content:"";display:block;width:40%;height:100%;background:#d39c54;animation:m 1.1s ease-in-out infinite}
-@keyframes m{0%{transform:translateX(-100%)}100%{transform:translateX(350%)}}
+  :root {
+    --gold: #d39c54;
+    --gold-soft: #f0c98a;
+    --ink: #1b1632;
+    --plum: #282345;
+    --violet: #5b4a9e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: var(--ink); }
+  body {
+    position: relative;
+    color: #fff;
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    cursor: default;
+    animation: bgIn .5s ease-out both;
+  }
+  @keyframes bgIn { from { opacity: 0 } to { opacity: 1 } }
+
+  /* ---------- Living background: slow drifting colour clouds ---------- */
+  .aurora { position: absolute; inset: 0; overflow: hidden; }
+  .blob {
+    position: absolute; border-radius: 50%;
+    width: 70vmax; height: 70vmax;
+    will-change: transform;
+  }
+  .b1 { background: radial-gradient(closest-side, rgba(91,74,158,.55), transparent); left: -18vmax; top: -22vmax; animation: d1 16s ease-in-out infinite alternate; }
+  .b2 { background: radial-gradient(closest-side, rgba(211,156,84,.26), transparent); right: -22vmax; bottom: -26vmax; animation: d2 19s ease-in-out infinite alternate; }
+  .b3 { background: radial-gradient(closest-side, rgba(120,70,150,.38), transparent); right: 8vmax; top: -30vmax; width: 55vmax; height: 55vmax; animation: d3 22s ease-in-out infinite alternate; }
+  @keyframes d1 { to { transform: translate(14vmax, 10vmax) scale(1.15); } }
+  @keyframes d2 { to { transform: translate(-12vmax, -9vmax) scale(1.2); } }
+  @keyframes d3 { to { transform: translate(-10vmax, 12vmax) scale(.9); } }
+
+  .vignette {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 40%, rgba(10,7,22,.65) 100%);
+  }
+
+  /* ---------- Twinkling stars (created by script below) ---------- */
+  .stars { position: absolute; inset: 0; }
+  .star {
+    position: absolute; border-radius: 50%; background: var(--gold-soft);
+    opacity: 0; animation: twinkle var(--d, 4s) ease-in-out var(--delay, 0s) infinite;
+  }
+  @keyframes twinkle { 0%, 100% { opacity: 0; transform: scale(.6) } 50% { opacity: var(--o, .7); transform: scale(1) } }
+
+  /* ---------- Centre stage ---------- */
+  .stage {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: clamp(18px, 3.2vh, 30px);
+    padding-bottom: 4vh;
+  }
+
+  .emblem { position: relative; width: 140px; height: 140px; margin-bottom: 46px; }
+
+  .halo {
+    position: absolute; left: 50%; top: 50%; width: 360px; height: 360px;
+    margin: -180px 0 0 -180px; border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(211,156,84,.40), rgba(211,156,84,.10) 55%, transparent);
+    opacity: 0; animation: haloIn 1s ease-out .25s forwards, breathe 3.6s ease-in-out 1.2s infinite;
+  }
+  @keyframes haloIn { to { opacity: 1 } }
+  @keyframes breathe { 0%, 100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.12); opacity: .75 } }
+
+  .ring {
+    position: absolute; left: 50%; top: 50%; border-radius: 50%;
+    opacity: 0; animation: ringIn .8s ease-out .7s forwards;
+  }
+  .ring.r1 { width: 196px; height: 196px; margin: -98px 0 0 -98px; border: 1px solid rgba(211,156,84,.22); }
+  .ring.r1 .spin { animation: spin 3.2s linear infinite; }
+  .ring.r2 { width: 262px; height: 262px; margin: -131px 0 0 -131px; border: 1px dashed rgba(240,201,138,.13); }
+  .ring.r2 .spin { animation: spin 26s linear infinite reverse; }
+  .spin { position: absolute; inset: -1px; border-radius: 50%; }
+  .ring.r1 .spin::before {
+    content: ""; position: absolute; left: 50%; top: -4px; width: 7px; height: 7px; margin-left: -3.5px;
+    border-radius: 50%; background: var(--gold-soft);
+    box-shadow: 0 0 12px 3px rgba(240,201,138,.85), 0 0 34px 8px rgba(211,156,84,.5);
+  }
+  .ring.r2 .spin::before {
+    content: ""; position: absolute; left: 50%; bottom: -3px; width: 5px; height: 5px; margin-left: -2.5px;
+    border-radius: 50%; background: #fff; opacity: .7; box-shadow: 0 0 10px 2px rgba(255,255,255,.5);
+  }
+  @keyframes ringIn { to { opacity: 1 } }
+  @keyframes spin { to { transform: rotate(360deg) } }
+
+  /* The real Mithara mark: four quarters fly in from the corners and lock together */
+  .mark { position: absolute; inset: 0; filter: drop-shadow(0 14px 30px rgba(0,0,0,.45)); }
+  .q {
+    position: absolute; width: 50%; height: 50%;
+    background-image: url("build/icon.png"); background-size: 200% 200%;
+    opacity: 0; will-change: transform, opacity;
+    animation: assemble .62s cubic-bezier(.2, .9, .25, 1.15) forwards;
+  }
+  .q1 { left: 0;   top: 0;   background-position: 0 0;       border-top-left-radius: 30px;     --x: -46px; --y: -46px; animation-delay: .04s; }
+  .q2 { left: 50%; top: 0;   background-position: 100% 0;    border-top-right-radius: 30px;    --x:  46px; --y: -46px; animation-delay: .10s; }
+  .q3 { left: 0;   top: 50%; background-position: 0 100%;    border-bottom-left-radius: 30px;  --x: -46px; --y:  46px; animation-delay: .16s; }
+  .q4 { left: 50%; top: 50%; background-position: 100% 100%; border-bottom-right-radius: 30px; --x:  46px; --y:  46px; animation-delay: .22s; }
+  @keyframes assemble {
+    from { opacity: 0; transform: translate(var(--x), var(--y)) scale(.55) rotate(var(--r, 0deg)); filter: blur(6px); }
+    to   { opacity: 1; transform: none; filter: blur(0); }
+  }
+  .q1, .q4 { --r: -14deg; } .q2, .q3 { --r: 14deg; }
+
+  .glint { position: absolute; inset: 0; border-radius: 30px; overflow: hidden; pointer-events: none; }
+  .glint::after {
+    content: ""; position: absolute; top: -20%; bottom: -20%; width: 42%; left: -60%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent);
+    transform: skewX(-18deg);
+    animation: glint 1.1s ease-in-out .9s 1 forwards, glint 3.4s ease-in-out 3.2s infinite;
+  }
+  @keyframes glint { from { left: -60% } to { left: 130% } }
+
+  /* Wordmark */
+  .wordmark {
+    width: clamp(260px, 26vw, 380px); height: auto; display: block;
+    clip-path: inset(0 100% 0 0); opacity: .98;
+    animation: reveal .75s cubic-bezier(.65, 0, .2, 1) .55s forwards;
+  }
+  /* glow lives on the wrapper so it follows the letters and is not cut off by the reveal clip */
+  .wm { filter: drop-shadow(0 0 16px rgba(211,156,84,.30)); }
+  @keyframes reveal { to { clip-path: inset(0 0 0 0) } }
+
+  /* Tagline with expanding rules */
+  .tagline {
+    display: flex; align-items: center; gap: 16px;
+    font-size: 12px; font-weight: 600; letter-spacing: .5em; text-indent: .5em;
+    color: var(--gold); text-transform: uppercase;
+    opacity: 0; animation: rise .6s ease-out .95s forwards;
+  }
+  .tagline i { display: block; height: 1px; width: 0; background: linear-gradient(90deg, transparent, var(--gold)); animation: grow .8s ease-out 1.05s forwards; }
+  .tagline i:last-child { transform: scaleX(-1); }
+  @keyframes grow { to { width: clamp(40px, 6vw, 84px) } }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+
+  /* Greeting + status */
+  .hello {
+    margin-top: 4px; text-align: center;
+    opacity: 0; animation: rise .7s ease-out 1.2s forwards;
+  }
+  .hello .greet { font-family: Georgia, "Times New Roman", serif; font-style: italic; font-size: 22px; color: #fff; letter-spacing: .01em; }
+  .hello .status { margin-top: 8px; height: 18px; font-size: 13px; color: rgba(255,255,255,.55); letter-spacing: .04em; display: flex; align-items: center; justify-content: center; gap: 4px; }
+  .status .txt { transition: opacity .3s ease, transform .3s ease; }
+  .status .txt.out { opacity: 0; transform: translateY(-4px); }
+  .dots span { display: inline-block; width: 3px; height: 3px; margin-left: 3px; border-radius: 50%; background: var(--gold); animation: dot 1.2s ease-in-out infinite; }
+  .dots span:nth-child(2) { animation-delay: .15s } .dots span:nth-child(3) { animation-delay: .3s }
+  @keyframes dot { 0%, 80%, 100% { opacity: .2; transform: translateY(0) } 40% { opacity: 1; transform: translateY(-3px) } }
+
+  /* Footer */
+  .foot {
+    position: absolute; left: 0; right: 0; bottom: 22px; text-align: center;
+    font-size: 11px; letter-spacing: .32em; text-indent: .32em; text-transform: uppercase;
+    color: rgba(255,255,255,.28); opacity: 0; animation: rise .8s ease-out 1.5s forwards;
+  }
+  .track { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255,255,255,.06); overflow: hidden; }
+  .track::after {
+    content: ""; position: absolute; top: 0; bottom: 0; width: 34%;
+    background: linear-gradient(90deg, transparent, var(--gold), var(--gold-soft), var(--gold), transparent);
+    box-shadow: 0 0 14px 2px rgba(211,156,84,.7);
+    animation: slide 1.5s cubic-bezier(.45, 0, .25, 1) infinite;
+  }
+  @keyframes slide { from { left: -40% } to { left: 106% } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .blob, .halo, .spin, .star, .glint::after, .track::after, .dots span { animation: none !important; }
+    .halo { opacity: 1; }
+  }
 </style>
-<img src="build/icon.png" alt=""><p>Opening Mithara Admin</p><div class="bar"></div>
+</head>
+<body>
+  <div class="aurora"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+  <div class="stars" id="stars"></div>
+  <div class="vignette"></div>
+
+  <main class="stage">
+    <div class="emblem">
+      <div class="halo"></div>
+      <div class="ring r2"><div class="spin"></div></div>
+      <div class="ring r1"><div class="spin"></div></div>
+      <div class="mark">
+        <div class="q q1"></div><div class="q q2"></div><div class="q q3"></div><div class="q q4"></div>
+        <div class="glint"></div>
+      </div>
+    </div>
+
+    <div class="wm"><img class="wordmark" src="build/logo.png" alt="Mithara"></div>
+
+    <div class="tagline"><i></i><span>Admin Console</span><i></i></div>
+
+    <div class="hello">
+      <div class="greet" id="greet">Welcome back</div>
+      <div class="status"><span class="txt" id="status">Starting up</span><span class="dots"><span></span><span></span><span></span></span></div>
+    </div>
+  </main>
+
+  <div class="foot">Crafted for the Mithara team</div>
+  <div class="track"></div>
+
+<script>
+  // Time-aware greeting
+  (function () {
+    var h = new Date().getHours();
+    var g = h < 5 ? "Working late" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : h < 21 ? "Good evening" : "Working late";
+    document.getElementById("greet").textContent = g;
+  })();
+
+  // Status line: a few calm steps, ending on "Almost there" if loading takes a while
+  (function () {
+    var el = document.getElementById("status");
+    var steps = [[1700, "Connecting securely"], [3600, "Loading your dashboard"], [6500, "Almost there"]];
+    steps.forEach(function (s) {
+      setTimeout(function () {
+        el.classList.add("out");
+        setTimeout(function () { el.textContent = s[1]; el.classList.remove("out"); }, 300);
+      }, s[0]);
+    });
+  })();
+
+  // A sprinkle of stars
+  (function () {
+    var box = document.getElementById("stars");
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < 46; i++) {
+      var s = document.createElement("span");
+      s.className = "star";
+      var size = Math.random() < .2 ? 3 : Math.random() < .5 ? 2 : 1.5;
+      s.style.cssText =
+        "left:" + (Math.random() * 100) + "%;top:" + (Math.random() * 100) + "%;" +
+        "width:" + size + "px;height:" + size + "px;" +
+        "--d:" + (3 + Math.random() * 4).toFixed(2) + "s;" +
+        "--delay:" + (Math.random() * 4).toFixed(2) + "s;" +
+        "--o:" + (.35 + Math.random() * .55).toFixed(2);
+      frag.appendChild(s);
+    }
+    box.appendChild(frag);
+  })();
+</script>
+</body>
+</html>

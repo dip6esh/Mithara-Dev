@@ -18,7 +18,7 @@
     "appId": "com.mithara.admin",
     "productName": "Mithara Admin",
     "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "offline.html", "splash.html", "config.json", "build/icon.png"],
+    "files": ["main.js", "offline.html", "splash.html", "config.json", "build/icon.png", "build/logo.png"],
     "win": {
       "icon": "build/icon.ico",
       "target": [{ "target": "nsis", "arch": ["x64"] }, { "target": "portable", "arch": ["x64"] }]

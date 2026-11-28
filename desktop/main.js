@@ -160,6 +160,16 @@ function startUpdateChecks() {
   setInterval(() => checkForUpdates(false), UPDATE_CHECK_EVERY_MS);
 }
 
+// The menu bar is hidden to keep the app clean. Tapping Alt shows / hides it. Because the admin page sits in
+// its own layer inside the window, Windows' built-in Alt handling no longer sees the key, so it is done here.
+function toggleMenuBar() {
+  if (!win || win.isDestroyed()) return;
+  win.setMenuBarVisibility(!win.isMenuBarVisible());
+  // The page area changes size when the bar appears or disappears.
+  setTimeout(layoutView, 40);
+  setTimeout(layoutView, 250);
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1400,
@@ -208,6 +218,23 @@ function createWindow() {
     minElapsed = true;
     maybeReveal();
   }, SPLASH_MAX_MS);
+
+  // Alt on its own (pressed and released, not used with another key) shows / hides the menu bar.
+  let altDown = false;
+  let altUsed = false;
+  page().on("before-input-event", (_e, input) => {
+    if (input.key === "Alt") {
+      if (input.type === "keyDown") {
+        if (!altDown) altUsed = false;
+        altDown = true;
+      } else if (input.type === "keyUp") {
+        if (altDown && !altUsed) toggleMenuBar();
+        altDown = false;
+      }
+    } else if (input.type === "keyDown" && altDown) {
+      altUsed = true;
+    }
+  });
 
   // Anything outside the admin area (the public site, other sites) opens in the normal browser.
   page().setWindowOpenHandler(({ url }) => {
@@ -263,7 +290,7 @@ function buildMenu() {
       {
         label: "Help",
         submenu: [
-          { label: "Check for updates…", click: () => checkForUpdates(true) },
+          { label: "Check for updates…", accelerator: "CmdOrCtrl+Shift+U", click: () => checkForUpdates(true) },
           { type: "separator" },
           { label: "About", click: () => dialog.showMessageBox(win, { message: `Mithara Admin v${app.getVersion()}` }) },
         ],

@@ -2,7 +2,8 @@
 
 The Windows app updates itself from inside: it checks GitHub Releases a few seconds after opening
 (and every 4 hours), and offers **Update now / Later**. "Update now" downloads, restarts and installs
-by itself. Staff can also use **Help → Check for updates…** (press Alt to show the menu bar).
+by itself. Staff can also check by hand: press **Ctrl + Shift + U**, or tap **Alt** to show the menu bar and
+choose **Help → Check for updates…**.
 
 ## What needs an update — and what doesn't
 - Website changes (pages, fixes, kitchen checklist, roles…): **nothing to do**. The app shows the live

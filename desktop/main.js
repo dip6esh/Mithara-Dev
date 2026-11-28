@@ -2,6 +2,14 @@ const { app, BrowserWindow, WebContentsView, Menu, shell, dialog } = require("el
 const path = require("path");
 const fs = require("fs");
 
+// Self-update (Windows installer version only). If the add-on is somehow missing the app still opens normally.
+let autoUpdater = null;
+try {
+  ({ autoUpdater } = require("electron-updater"));
+} catch {
+  autoUpdater = null;
+}
+
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"));
 const ORIGIN = new URL(config.appUrl).origin;
 const START = ORIGIN + (config.startPath || "/admin");
@@ -50,7 +58,106 @@ function maybeReveal() {
     page().focus();
     // The splash is hidden now: stop its animations so they don't use the graphics card.
     win.webContents.loadURL("about:blank").catch(() => {});
+    startUpdateChecks();
   }, FADE_MS);
+}
+
+/* ------------------------------ Updates ------------------------------ */
+// The app asks GitHub Releases whether a newer version exists. If so it offers "Update now / Later".
+// "Update now" downloads it, restarts the app and installs it by itself: no installer to click through.
+// Not available in the portable .exe or when running from source (npm start).
+const UPDATE_CHECK_EVERY_MS = 4 * 60 * 60 * 1000; // kitchen PCs stay on all day, so check again every 4 hours
+let updaterReady = false;
+let updateBusy = false; // a prompt or download is already in progress
+let manualCheck = false;
+
+function canSelfUpdate() {
+  return !!autoUpdater && app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE;
+}
+
+function setupUpdater() {
+  if (updaterReady || !canSelfUpdate()) return;
+  updaterReady = true;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = null;
+
+  autoUpdater.on("update-available", async (info) => {
+    if (updateBusy) return;
+    updateBusy = true;
+    manualCheck = false;
+    const { response } = await dialog.showMessageBox(win, {
+      type: "info",
+      title: "Update available",
+      message: `A new version of Mithara Admin is ready (${info.version}).`,
+      detail: "Update now? The app restarts and installs it in a few seconds.",
+      buttons: ["Update now", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (response === 0) {
+      try {
+        await autoUpdater.downloadUpdate();
+      } catch {
+        updateBusy = false;
+        win.setProgressBar(-1);
+        dialog.showMessageBox(win, { type: "warning", message: "The update could not be downloaded.", detail: "Please check the internet connection and try again from Help → Check for updates." });
+      }
+    } else {
+      updateBusy = false;
+    }
+  });
+
+  autoUpdater.on("download-progress", (p) => {
+    if (win && !win.isDestroyed()) win.setProgressBar(Math.max(0, Math.min(1, p.percent / 100)));
+  });
+
+  autoUpdater.on("update-downloaded", () => {
+    if (win && !win.isDestroyed()) win.setProgressBar(-1);
+    // silent install, then reopen the app straight away
+    autoUpdater.quitAndInstall(true, true);
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    if (manualCheck) {
+      manualCheck = false;
+      dialog.showMessageBox(win, { type: "info", message: "You're up to date.", detail: `Mithara Admin v${app.getVersion()}` });
+    }
+  });
+
+  autoUpdater.on("error", () => {
+    updateBusy = false;
+    if (manualCheck) {
+      manualCheck = false;
+      dialog.showMessageBox(win, { type: "warning", message: "Could not check for updates.", detail: "Please check the internet connection and try again." });
+    }
+  });
+}
+
+function checkForUpdates(manual = false) {
+  if (!canSelfUpdate()) {
+    if (manual) {
+      dialog.showMessageBox(win, {
+        type: "info",
+        message: "Updates are not available in this version.",
+        detail: "Install the normal Setup version of Mithara Admin to get in-app updates.",
+      });
+    }
+    return;
+  }
+  setupUpdater();
+  if (updateBusy) return;
+  manualCheck = manual;
+  autoUpdater.checkForUpdates().catch(() => {});
+}
+
+let updateChecksStarted = false;
+function startUpdateChecks() {
+  if (updateChecksStarted || !canSelfUpdate()) return;
+  updateChecksStarted = true;
+  setTimeout(() => checkForUpdates(false), 6000); // a few seconds after the app is on screen, never during the splash
+  setInterval(() => checkForUpdates(false), UPDATE_CHECK_EVERY_MS);
 }
 
 function createWindow() {
@@ -153,7 +260,14 @@ function buildMenu() {
           { label: "Actual size", accelerator: "CmdOrCtrl+0", click: () => zoom(0) },
         ],
       },
-      { label: "Help", submenu: [{ label: "About", click: () => dialog.showMessageBox(win, { message: `Mithara Admin v${app.getVersion()}` }) }] },
+      {
+        label: "Help",
+        submenu: [
+          { label: "Check for updates…", click: () => checkForUpdates(true) },
+          { type: "separator" },
+          { label: "About", click: () => dialog.showMessageBox(win, { message: `Mithara Admin v${app.getVersion()}` }) },
+        ],
+      },
     ])
   );
 }

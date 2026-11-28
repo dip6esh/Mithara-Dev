@@ -3,6 +3,12 @@ on:
   workflow_dispatch: {}
   push:
     tags: ["desktop-v*"]
+
+# Needed so the build can publish the installer as a GitHub Release (that is what the app's
+# "Update now" button downloads from).
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -15,7 +21,11 @@ jobs:
         with:
           node-version: 20
       - run: npm install
-      - run: npm run dist
+      # Builds the installer, and publishes it (with the update info file) as a Release named after
+      # the version in desktop/package.json. Raise that version number before every release.
+      - run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
         with:
           name: Mithara-Admin-Windows

@@ -1,14 +1,15 @@
 {
   "name": "mithara-admin",
   "productName": "Mithara Admin",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Mithara management system (orders, kitchen, invoices, menu, revenue)",
   "main": "main.js",
   "author": "Mithara",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis portable"
+    "dist": "electron-builder --win nsis portable --publish never",
+    "release": "electron-builder --win nsis portable --publish always"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -17,17 +18,55 @@
   "build": {
     "appId": "com.mithara.admin",
     "productName": "Mithara Admin",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "offline.html", "splash.html", "config.json", "build/icon.png", "build/logo.png"],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "offline.html",
+      "splash.html",
+      "config.json",
+      "build/icon.png",
+      "build/logo.png"
+    ],
     "win": {
       "icon": "build/icon.ico",
-      "target": [{ "target": "nsis", "arch": ["x64"] }, { "target": "portable", "arch": ["x64"] }]
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "artifactName": "Mithara-Admin-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "dip6esh",
+        "repo": "Mithara-Dev",
+        "releaseType": "release"
+      }
+    ],
+    "portable": {
+      "artifactName": "Mithara-Admin-Portable-${version}.${ext}"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
   }
 }

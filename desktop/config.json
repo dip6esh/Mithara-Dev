@@ -1,4 +1,5 @@
 {
   "appUrl": "https://mitharadev.vercel.app",
-  "startPath": "/admin/dashboard"
+  "startPath": "/admin/dashboard",
+  "splashMinMs": 2600
 }

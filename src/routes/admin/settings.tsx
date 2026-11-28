@@ -719,8 +719,8 @@ const NAV_GROUPS: {
   {
     title: "Alerts",
     items: [
-      { id: "sound", label: "Sound", icon: Volume2, navColor: "text-[#7c3aed]" },
-      { id: "kot", label: "KOT printing", icon: Printer, navColor: "text-[#7c3aed]" },
+      { id: "sound", label: "Sound", icon: Volume2, navColor: "text-[#0891b2]" },
+      { id: "kot", label: "KOT printing", icon: Printer, navColor: "text-[#db2777]" },
     ],
   },
   {
@@ -774,7 +774,7 @@ function useActiveSection(ids: string[]) {
   return active;
 }
 
-type Tone = "emerald" | "rose" | "blue" | "gold" | "indigo" | "violet" | "whatsapp";
+type Tone = "emerald" | "rose" | "blue" | "gold" | "indigo" | "violet" | "cyan" | "pink" | "whatsapp";
 
 const TONES: Record<Tone, { tile: string; bar: string }> = {
   emerald: { tile: "bg-[#e6f6ee] text-[#059669] ring-[#bfe6d2]", bar: "bg-[#10b981]" },
@@ -783,6 +783,8 @@ const TONES: Record<Tone, { tile: string; bar: string }> = {
   gold: { tile: "bg-[#fbf1e1] text-[#a8691d] ring-[#efd6ae]", bar: "bg-[#d39c54]" },
   indigo: { tile: "bg-[#ebe9f6] text-[#282345] ring-[#cfcae6]", bar: "bg-[#282345]" },
   violet: { tile: "bg-[#f1e9fd] text-[#7c3aed] ring-[#dcc8f8]", bar: "bg-[#8b5cf6]" },
+  cyan: { tile: "bg-[#e0f4f8] text-[#0891b2] ring-[#b4e3ee]", bar: "bg-[#06b6d4]" },
+  pink: { tile: "bg-[#fce7f3] text-[#db2777] ring-[#f6bfdc]", bar: "bg-[#ec4899]" },
   whatsapp: { tile: "bg-[#25D366] text-white ring-[#25D366]/30", bar: "bg-[#25D366]" },
 };
 
@@ -920,7 +922,7 @@ function SoundSettings() {
   return (
     <Section
       id="sound"
-      tone="violet"
+      tone="cyan"
       icon={Volume2}
       title="Alert sound"
       description="Volume and mute for the new-order bell, order-ready ding and low-stock warning."
@@ -1008,7 +1010,7 @@ function KotTestSettings() {
   return (
     <Section
       id="kot"
-      tone="violet"
+      tone="pink"
       icon={Printer}
       title="KOT printing"
       description="Choose your paper size, then check the slip and print a test before you open."

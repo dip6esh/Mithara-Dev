@@ -1,10 +1,17 @@
-const { app, BrowserWindow, Menu, shell, dialog } = require("electron");
+const { app, BrowserWindow, WebContentsView, Menu, shell, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, "config.json"), "utf8"));
 const ORIGIN = new URL(config.appUrl).origin;
 const START = ORIGIN + (config.startPath || "/admin");
+
+// How long the opening animation stays on screen at minimum (milliseconds). The admin page loads in the
+// background meanwhile, so the app opens after whichever takes longer. Set "splashMinMs" in config.json
+// to change it (0 = open as soon as the admin page is ready).
+const SPLASH_MIN_MS = Number.isFinite(Number(config.splashMinMs)) ? Number(config.splashMinMs) : 2600;
+const SPLASH_MAX_MS = 15000; // never wait longer than this, even if the page is very slow to load
+const FADE_MS = 350;
 
 // Only the management area (and printable invoices) may open inside the app.
 const isAllowedInApp = (url) => {
@@ -16,7 +23,35 @@ const isAllowedInApp = (url) => {
   }
 };
 
-let win;
+let win; // the window; it shows the splash itself
+let view; // the admin web page, loaded in the background and placed over the splash when ready
+let revealed = false;
+let pageReady = false;
+let minElapsed = false;
+
+const page = () => view.webContents;
+
+function layoutView() {
+  if (!win || !view || !revealed) return;
+  const [width, height] = win.getContentSize();
+  view.setBounds({ x: 0, y: 0, width, height });
+}
+
+// Show the admin page once BOTH the animation has had its time and the page has finished loading.
+function maybeReveal() {
+  if (revealed || !pageReady || !minElapsed || !win || win.isDestroyed()) return;
+  revealed = true;
+  // Fade the splash out, then slide the real page in over it.
+  win.webContents.executeJavaScript("document.body.classList.add('leaving')").catch(() => {});
+  setTimeout(() => {
+    if (!win || win.isDestroyed()) return;
+    win.contentView.addChildView(view);
+    layoutView();
+    page().focus();
+    // The splash is hidden now: stop its animations so they don't use the graphics card.
+    win.webContents.loadURL("about:blank").catch(() => {});
+  }, FADE_MS);
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -33,19 +68,47 @@ function createWindow() {
   });
   win.maximize();
 
-  // 1) Show a branded splash instantly from the local disk.
-  // 2) Start loading the real admin behind it.
-  win.once("ready-to-show", () => win.show());
+  // The admin page loads in a separate view that is NOT on screen yet.
+  view = new WebContentsView({
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  view.setBackgroundColor("#ffffff");
+
+  for (const ev of ["resize", "maximize", "unmaximize", "enter-full-screen", "leave-full-screen"]) {
+    win.on(ev, layoutView);
+  }
+
+  // 1) The splash appears at once from the local disk, and its minimum time starts when it is visible.
+  win.once("ready-to-show", () => {
+    win.show();
+    setTimeout(() => {
+      minElapsed = true;
+      maybeReveal();
+    }, SPLASH_MIN_MS);
+  });
   win.loadFile(path.join(__dirname, "splash.html"));
-  win.webContents.once("did-finish-load", () => win.loadURL(START));
+
+  // 2) Meanwhile the real admin page loads behind it.
+  page().once("did-finish-load", () => {
+    pageReady = true;
+    maybeReveal();
+  });
+  page().loadURL(START);
+
+  // Safety net: if the page is extremely slow, show whatever we have rather than keep the splash forever.
+  setTimeout(() => {
+    pageReady = true;
+    minElapsed = true;
+    maybeReveal();
+  }, SPLASH_MAX_MS);
 
   // Anything outside the admin area (the public site, other sites) opens in the normal browser.
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  page().setWindowOpenHandler(({ url }) => {
     if (isAllowedInApp(url)) return { action: "allow" };
     shell.openExternal(url);
     return { action: "deny" };
   });
-  win.webContents.on("will-navigate", (e, url) => {
+  page().on("will-navigate", (e, url) => {
     if (!isAllowedInApp(url)) {
       e.preventDefault();
       if (/^https?:/.test(url)) shell.openExternal(url);
@@ -53,12 +116,15 @@ function createWindow() {
   });
 
   // No internet / server unreachable -> friendly retry page instead of a blank window.
-  win.webContents.on("did-fail-load", (_e, code, _desc, url, isMainFrame) => {
+  page().on("did-fail-load", (_e, code, _desc, url, isMainFrame) => {
     if (isMainFrame && code !== -3 && !url.startsWith("file:")) {
-      win.loadFile(path.join(__dirname, "offline.html"));
+      page().loadFile(path.join(__dirname, "offline.html"));
     }
   });
 }
+
+const go = (url) => page().loadURL(url);
+const zoom = (delta) => page().setZoomLevel(delta === 0 ? 0 : page().getZoomLevel() + delta);
 
 function buildMenu() {
   Menu.setApplicationMenu(
@@ -66,17 +132,27 @@ function buildMenu() {
       {
         label: "Mithara",
         submenu: [
-          { label: "Dashboard", click: () => win.loadURL(ORIGIN + "/admin/dashboard") },
-          { label: "Orders", click: () => win.loadURL(ORIGIN + "/admin/orders") },
-          { label: "Kitchen", click: () => win.loadURL(ORIGIN + "/admin/kitchen") },
+          { label: "Dashboard", click: () => go(ORIGIN + "/admin/dashboard") },
+          { label: "Orders", click: () => go(ORIGIN + "/admin/orders") },
+          { label: "Kitchen", click: () => go(ORIGIN + "/admin/kitchen") },
           { type: "separator" },
-          { label: "Reload", accelerator: "CmdOrCtrl+R", click: () => win.loadURL(START) },
-          { label: "Print…", accelerator: "CmdOrCtrl+P", click: () => win.webContents.print() },
+          { label: "Reload", accelerator: "CmdOrCtrl+R", click: () => go(START) },
+          { label: "Print…", accelerator: "CmdOrCtrl+P", click: () => page().print() },
           { type: "separator" },
           { role: "quit" },
         ],
       },
-      { label: "View", submenu: [{ role: "togglefullscreen" }, { role: "zoomIn" }, { role: "zoomOut" }, { role: "resetZoom" }] },
+      {
+        label: "View",
+        submenu: [
+          { role: "togglefullscreen" },
+          // Zoom is applied to the admin page itself (the page sits inside the window as its own view).
+          { label: "Zoom in", accelerator: "CmdOrCtrl+Plus", click: () => zoom(0.5) },
+          { label: "Zoom in (alt)", accelerator: "CmdOrCtrl+=", visible: false, click: () => zoom(0.5) },
+          { label: "Zoom out", accelerator: "CmdOrCtrl+-", click: () => zoom(-0.5) },
+          { label: "Actual size", accelerator: "CmdOrCtrl+0", click: () => zoom(0) },
+        ],
+      },
       { label: "Help", submenu: [{ label: "About", click: () => dialog.showMessageBox(win, { message: `Mithara Admin v${app.getVersion()}` }) }] },
     ])
   );

@@ -33,6 +33,8 @@ import { ModalBackdrop } from "../../components/ModalBackdrop";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
 import { OrderProgress } from "../../components/admin/OrderProgress";
 import { describeAction, type PendingAction } from "../../lib/orderActions";
+import { useAuth } from "../../lib/auth";
+import { canReverseOrders } from "../../lib/roles";
 
 /** The note a customer typed at checkout. Manual orders keep their item text in `notes`, so ignore a note that just repeats an item. */
 function customerNote(o: Order): string | null {
@@ -106,6 +108,9 @@ function AdminOrdersPage() {
   const [isUpdatingOrder, setIsUpdatingOrder] = useState(false);
   /** The action waiting for the admin's "yes" in the confirmation box. */
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  // Cancel, restore and the "undo" actions belong to the Owner and Managers; a Counter / Biller cannot do them.
+  const { roles } = useAuth();
+  const canReverse = canReverseOrders(roles);
 
   // Manual order modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -279,7 +284,14 @@ function AdminOrdersPage() {
   };
 
   /** Every action that changes an order or its invoice goes through the confirmation box first. */
-  const ask = (action: PendingAction) => setPendingAction(action);
+  const ask = (action: PendingAction) => {
+    const reversing = ["cancel", "restore", "undo_payment", "undo_handover"].includes(action.kind);
+    if (reversing && !canReverse) {
+      toast.error("Please ask a manager to do this.");
+      return;
+    }
+    setPendingAction(action);
+  };
 
   const runPendingAction = async () => {
     const a = pendingAction;
@@ -901,6 +913,7 @@ function AdminOrdersPage() {
                 </div>
 
                 {/* Same place on every order: undo / cancel / restore */}
+                {canReverse && (
                 <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-800 bg-neutral-900/40 px-4 py-3">
                   {selectedOrder.status === "cancelled" ? (
                     <button
@@ -929,6 +942,7 @@ function AdminOrdersPage() {
                     </button>
                   )}
                 </footer>
+                )}
               </section>
 
               {/* Customer & Address Info */}
@@ -1083,7 +1097,7 @@ function AdminOrdersPage() {
                     Invoice: created automatically when payment is received.
                   </p>
                 )}
-                {selectedOrder.payment_status === "paid" && selectedOrder.status !== "cancelled" && (
+                {canReverse && selectedOrder.payment_status === "paid" && selectedOrder.status !== "cancelled" && (
                   <button
                     disabled={isUpdatingOrder}
                     onClick={() => ask({ kind: "undo_payment", order: selectedOrder })}

@@ -20,6 +20,7 @@ import { Route as AccountProfileRouteImport } from './routes/account/profile'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminCustomersRouteImport } from './routes/admin/customers'
 import { Route as AdminDashboardRouteImport } from './routes/admin/dashboard'
+import { Route as AdminDeliveriesRouteImport } from './routes/admin/deliveries'
 import { Route as AdminInvoicesRouteImport } from './routes/admin/invoices'
 import { Route as AdminKitchenRouteImport } from './routes/admin/kitchen'
 import { Route as AdminLoginRouteImport } from './routes/admin/login'
@@ -27,6 +28,8 @@ import { Route as AdminMenuRouteImport } from './routes/admin/menu'
 import { Route as AdminOrdersRouteImport } from './routes/admin/orders'
 import { Route as AdminRevenueRouteImport } from './routes/admin/revenue'
 import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
+import { Route as AdminStaffRouteImport } from './routes/admin/staff'
+import { Route as ApiStaffRouteImport } from './routes/api.staff'
 import { Route as InvoiceInvoiceIdRouteImport } from './routes/invoice.$invoiceId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -84,6 +87,11 @@ const AdminDashboardRoute = AdminDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminDeliveriesRoute = AdminDeliveriesRouteImport.update({
+  id: '/deliveries',
+  path: '/deliveries',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminInvoicesRoute = AdminInvoicesRouteImport.update({
   id: '/invoices',
   path: '/invoices',
@@ -119,6 +127,16 @@ const AdminSettingsRoute = AdminSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminStaffRoute = AdminStaffRouteImport.update({
+  id: '/staff',
+  path: '/staff',
+  getParentRoute: () => AdminRoute,
+} as any)
+const ApiStaffRoute = ApiStaffRouteImport.update({
+  id: '/api/staff',
+  path: '/api/staff',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InvoiceInvoiceIdRoute = InvoiceInvoiceIdRouteImport.update({
   id: '/invoice/$invoiceId',
   path: '/invoice/$invoiceId',
@@ -136,6 +154,7 @@ export interface FileRoutesByFullPath {
   '/account/profile': typeof AccountProfileRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/deliveries': typeof AdminDeliveriesRoute
   '/admin/invoices': typeof AdminInvoicesRoute
   '/admin/kitchen': typeof AdminKitchenRoute
   '/admin/login': typeof AdminLoginRoute
@@ -143,6 +162,8 @@ export interface FileRoutesByFullPath {
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/revenue': typeof AdminRevenueRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/staff': typeof AdminStaffRoute
+  '/api/staff': typeof ApiStaffRoute
   '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -156,6 +177,7 @@ export interface FileRoutesByTo {
   '/account/profile': typeof AccountProfileRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/deliveries': typeof AdminDeliveriesRoute
   '/admin/invoices': typeof AdminInvoicesRoute
   '/admin/kitchen': typeof AdminKitchenRoute
   '/admin/login': typeof AdminLoginRoute
@@ -163,6 +185,8 @@ export interface FileRoutesByTo {
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/revenue': typeof AdminRevenueRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/staff': typeof AdminStaffRoute
+  '/api/staff': typeof ApiStaffRoute
   '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
   '/admin': typeof AdminIndexRoute
 }
@@ -178,6 +202,7 @@ export interface FileRoutesById {
   '/account/profile': typeof AccountProfileRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/deliveries': typeof AdminDeliveriesRoute
   '/admin/invoices': typeof AdminInvoicesRoute
   '/admin/kitchen': typeof AdminKitchenRoute
   '/admin/login': typeof AdminLoginRoute
@@ -185,6 +210,8 @@ export interface FileRoutesById {
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/revenue': typeof AdminRevenueRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/staff': typeof AdminStaffRoute
+  '/api/staff': typeof ApiStaffRoute
   '/invoice/$invoiceId': typeof InvoiceInvoiceIdRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -201,6 +228,7 @@ export interface FileRouteTypes {
     | '/account/profile'
     | '/admin/customers'
     | '/admin/dashboard'
+    | '/admin/deliveries'
     | '/admin/invoices'
     | '/admin/kitchen'
     | '/admin/login'
@@ -208,6 +236,8 @@ export interface FileRouteTypes {
     | '/admin/orders'
     | '/admin/revenue'
     | '/admin/settings'
+    | '/admin/staff'
+    | '/api/staff'
     | '/invoice/$invoiceId'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
@@ -221,6 +251,7 @@ export interface FileRouteTypes {
     | '/account/profile'
     | '/admin/customers'
     | '/admin/dashboard'
+    | '/admin/deliveries'
     | '/admin/invoices'
     | '/admin/kitchen'
     | '/admin/login'
@@ -228,6 +259,8 @@ export interface FileRouteTypes {
     | '/admin/orders'
     | '/admin/revenue'
     | '/admin/settings'
+    | '/admin/staff'
+    | '/api/staff'
     | '/invoice/$invoiceId'
     | '/admin'
   id:
@@ -242,6 +275,7 @@ export interface FileRouteTypes {
     | '/account/profile'
     | '/admin/customers'
     | '/admin/dashboard'
+    | '/admin/deliveries'
     | '/admin/invoices'
     | '/admin/kitchen'
     | '/admin/login'
@@ -249,6 +283,8 @@ export interface FileRouteTypes {
     | '/admin/orders'
     | '/admin/revenue'
     | '/admin/settings'
+    | '/admin/staff'
+    | '/api/staff'
     | '/invoice/$invoiceId'
     | '/admin/'
   fileRoutesById: FileRoutesById
@@ -262,6 +298,7 @@ export interface RootRouteChildren {
   KunafaRoute: typeof KunafaRoute
   AccountLoginRoute: typeof AccountLoginRoute
   AccountProfileRoute: typeof AccountProfileRoute
+  ApiStaffRoute: typeof ApiStaffRoute
   InvoiceInvoiceIdRoute: typeof InvoiceInvoiceIdRoute
 }
 
@@ -344,6 +381,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminDashboardRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/deliveries': {
+      id: '/admin/deliveries'
+      path: '/deliveries'
+      fullPath: '/admin/deliveries'
+      preLoaderRoute: typeof AdminDeliveriesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/invoices': {
       id: '/admin/invoices'
       path: '/invoices'
@@ -393,6 +437,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSettingsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/staff': {
+      id: '/admin/staff'
+      path: '/staff'
+      fullPath: '/admin/staff'
+      preLoaderRoute: typeof AdminStaffRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/api/staff': {
+      id: '/api/staff'
+      path: '/api/staff'
+      fullPath: '/api/staff'
+      preLoaderRoute: typeof ApiStaffRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/invoice/$invoiceId': {
       id: '/invoice/$invoiceId'
       path: '/invoice/$invoiceId'
@@ -406,6 +464,7 @@ declare module '@tanstack/react-router' {
 interface AdminRouteChildren {
   AdminCustomersRoute: typeof AdminCustomersRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
+  AdminDeliveriesRoute: typeof AdminDeliveriesRoute
   AdminInvoicesRoute: typeof AdminInvoicesRoute
   AdminKitchenRoute: typeof AdminKitchenRoute
   AdminLoginRoute: typeof AdminLoginRoute
@@ -413,12 +472,14 @@ interface AdminRouteChildren {
   AdminOrdersRoute: typeof AdminOrdersRoute
   AdminRevenueRoute: typeof AdminRevenueRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
+  AdminStaffRoute: typeof AdminStaffRoute
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminCustomersRoute: AdminCustomersRoute,
   AdminDashboardRoute: AdminDashboardRoute,
+  AdminDeliveriesRoute: AdminDeliveriesRoute,
   AdminInvoicesRoute: AdminInvoicesRoute,
   AdminKitchenRoute: AdminKitchenRoute,
   AdminLoginRoute: AdminLoginRoute,
@@ -426,6 +487,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminOrdersRoute: AdminOrdersRoute,
   AdminRevenueRoute: AdminRevenueRoute,
   AdminSettingsRoute: AdminSettingsRoute,
+  AdminStaffRoute: AdminStaffRoute,
   AdminIndexRoute: AdminIndexRoute,
 }
 
@@ -440,6 +502,7 @@ const rootRouteChildren: RootRouteChildren = {
   KunafaRoute: KunafaRoute,
   AccountLoginRoute: AccountLoginRoute,
   AccountProfileRoute: AccountProfileRoute,
+  ApiStaffRoute: ApiStaffRoute,
   InvoiceInvoiceIdRoute: InvoiceInvoiceIdRoute,
 }
 export const routeTree = rootRouteImport

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { supabase } from "../../lib/supabase";
-import { isAdminUser, primeAuth } from "../../lib/auth";
-import { Lock, Mail, Loader2, ArrowLeft, ArrowRight, Eye, EyeOff, ShieldCheck } from "lucide-react";
+import { getAdminRoles, primeAuth } from "../../lib/auth";
+import { landingPath, loginNameToEmail } from "../../lib/roles";
+import { Lock, UserRound, Loader2, ArrowLeft, ArrowRight, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import logoText from "../../assets/mithara-logo.png";
 import logoIcon from "../../assets/mithara-icon.png";
@@ -28,14 +29,15 @@ function AdminLoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
-      toast.error("Please enter both email and password.");
+      toast.error("Please enter both your sign-in name and password.");
       return;
     }
 
     setIsLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        // Staff may type a short username (e.g. "ravi"); it is turned into their private sign-in address.
+        email: loginNameToEmail(email),
         password,
       });
 
@@ -45,24 +47,28 @@ function AdminLoginPage() {
         return;
       }
 
-      if (!isAdminUser(data.user)) {
+      // Make the whole app aware of the new session before the access check runs, then find out what
+      // this person may do: the Owner, or an active staff member with one or more roles.
+      primeAuth(data.session);
+      const roles = await getAdminRoles();
+      if (roles.length === 0) {
         await supabase.auth.signOut();
-        toast.error("Access denied. This account does not possess administrator credentials.");
+        primeAuth(null);
+        toast.error("Access denied. This account does not have access to the management console.");
         setIsLoading(false);
         return;
       }
 
-      // Make the whole app aware of the new session before the dashboard's access check runs.
-      primeAuth(data.session);
       toast.success("Welcome back to Mithara Admin");
-      // Load the dashboard first (the button keeps showing its spinner), then switch once. Navigating
-      // straight away left the sign-in form on screen while the dashboard's code was still loading.
+      // Load the first page first (the button keeps showing its spinner), then switch once. Navigating
+      // straight away left the sign-in form on screen while the page's code was still loading.
+      const home = landingPath(roles);
       try {
-        await router.preloadRoute({ to: "/admin/dashboard" });
+        await router.preloadRoute({ to: home });
       } catch {
         /* navigating below still works, just without the head start */
       }
-      await router.navigate({ to: "/admin/dashboard", replace: true });
+      await router.navigate({ to: home, replace: true });
     } catch (err: any) {
       toast.error(err?.message || "Failed to sign in");
       setIsLoading(false);
@@ -123,23 +129,27 @@ function AdminLoginPage() {
           </p>
           <h1 className="mt-2 font-serif text-2xl font-semibold text-[#1c1733] sm:text-3xl">Welcome back</h1>
           <p className="mt-2 text-sm text-[#6b6488]">
-            Sign in to manage orders, menu and store settings.
+            Sign in to manage orders, the kitchen, deliveries and more.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-7 space-y-5">
             <div>
               <label htmlFor="admin-email" className="mb-1.5 block text-xs font-semibold text-[#4a4370]">
-                Email
+                Email or username
               </label>
               <div className="relative">
-                <Mail className="absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-[#a8a1c2]" />
+                <UserRound className="absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2 text-[#a8a1c2]" />
                 <input
                   id="admin-email"
-                  type="email"
+                  type="text"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@mithara.com"
+                  placeholder="Email or username"
                   required
                   className={inputClass}
                 />

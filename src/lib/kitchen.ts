@@ -51,12 +51,13 @@ export type AgeTone = "fresh" | "late" | "very-late";
 export const ageTone = (mins: number): AgeTone =>
   mins >= VERY_LATE_AFTER_MIN ? "very-late" : mins >= LATE_AFTER_MIN ? "late" : "fresh";
 
-/** "To make now": total quantity per item (and variant) across the orders that are not ready yet. */
+/** "To make now": total quantity per item (and variant) still to be made, across the orders that are not ready yet. */
 export function toMakeNow(orders: Order[]): Array<{ key: string; name: string; variant: string | null; qty: number }> {
   const map = new Map<string, { key: string; name: string; variant: string | null; qty: number }>();
   for (const o of orders) {
     if (kitchenStatusOf(o) === "ready") continue;
     for (const i of o.order_items ?? []) {
+      if (i.prepared_at) continue; // already made: nothing left to cook for this one
       const variant = i.variant?.trim() || null;
       const key = `${i.name.trim().toLowerCase()}|${(variant ?? "").toLowerCase()}`;
       const row = map.get(key) ?? { key, name: i.name.trim(), variant, qty: 0 };
@@ -80,3 +81,23 @@ export const isReadyForDispatch = (o: Pick<Order, "status" | "kitchen_status">) 
 /** Wording shared by the kitchen board and the Orders list. */
 export const readyLabel = (o: Pick<Order, "delivery_type">) =>
   o.delivery_type === "pickup" ? "Ready for pickup" : "Ready for delivery";
+
+/**
+ * Item-by-item progress. Orders with more than one item get a checklist: each item is ticked off as it is
+ * prepared and "Food ready" switches on once all are done. A single-item order keeps the plain one-tap flow.
+ * Needs migration 015 (the prepared_at column); without it the board behaves exactly as before.
+ */
+export type ItemProgress = { tracked: boolean; done: number; total: number; allDone: boolean };
+
+export function itemProgress(o: Pick<Order, "order_items">): ItemProgress {
+  const items = o.order_items ?? [];
+  const supported = items.length > 0 && items.every((i) => "prepared_at" in i);
+  const done = items.filter((i) => !!i.prepared_at).length;
+  return { tracked: supported && items.length > 1, done, total: items.length, allDone: items.length > 0 && done === items.length };
+}
+
+/** True when a Supabase error means migration 015 has not been run yet. */
+export const isMissingItemColumn = (err: unknown) => {
+  const e = err as { code?: string; message?: string } | null;
+  return !!e && (e.code === "42703" || /prepared_at/i.test(e.message ?? ""));
+};

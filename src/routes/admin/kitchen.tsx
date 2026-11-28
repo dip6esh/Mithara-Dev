@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   ArrowRight,
+  Check,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -18,6 +19,7 @@ import {
   KITCHEN_STEPS,
   ageTone,
   formatAge,
+  itemProgress,
   kitchenStatusOf,
   minutesSince,
   nextKitchenStatus,
@@ -108,7 +110,7 @@ const AGE_CLASS: Record<AgeTone, string> = {
 };
 
 function KitchenPage() {
-  const { orders, counts, loading, busyId, setStatus, refresh } = useKitchenOrders();
+  const { orders, counts, loading, busyId, setStatus, toggleItem, markAllItems, refresh } = useKitchenOrders();
   const [tab, setTab] = useState<KitchenStatus>("new");
   // Re-draw the timers every 30 s (no data is fetched for this).
   const [now, setNow] = useState(() => Date.now());
@@ -249,6 +251,8 @@ function KitchenPage() {
                         now={now}
                         busy={busyId === o.id}
                         onMove={(next) => void setStatus(o, next)}
+                        onToggleItem={(itemId, done) => void toggleItem(o, itemId, done)}
+                        onMarkAll={() => void markAllItems(o)}
                       />
                     ))}
                   </ul>
@@ -269,12 +273,16 @@ function Ticket({
   now,
   busy,
   onMove,
+  onToggleItem,
+  onMarkAll,
 }: {
   order: Order;
   status: KitchenStatus;
   now: number;
   busy: boolean;
   onMove: (next: KitchenStatus) => void;
+  onToggleItem: (itemId: string, done: boolean) => void;
+  onMarkAll: () => void;
 }) {
   const st = STAGE[status];
   const kotWidth = useKotWidth();
@@ -289,6 +297,10 @@ function Ticket({
   const prev = prevKitchenStatus(status);
   const pickup = order.delivery_type === "pickup";
   const items = order.order_items ?? [];
+  // Orders with several items get a checklist while they are being made; "Food ready" waits for every tick.
+  const progress = itemProgress(order);
+  const checklist = progress.tracked && status !== "ready";
+  const waitingOnItems = checklist && status === "preparing" && !progress.allDone;
 
   const typeBadge = (
     <span
@@ -407,27 +419,84 @@ function Ticket({
       {band}
 
       <div className="p-4">
+        {checklist && (
+          <div className="mb-3">
+            <div className="mb-1.5 flex items-center justify-between text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+              <span>Tick each item as it's made</span>
+              <span className={progress.allDone ? "text-emerald-600" : ""}>
+                {progress.done} of {progress.total} done
+              </span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-black/10">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+        )}
         <ul className="space-y-2.5">
           {items.length === 0 ? (
             <li className="text-sm text-muted-foreground italic">Loading items…</li>
           ) : (
-            items.map((i) => (
-              <li key={i.id} className="flex items-baseline gap-2">
-                <span className={`min-w-8 font-serif text-xl leading-none font-bold ${st.qty}`}>{i.qty}×</span>
-                <div className="min-w-0">
-                  <p className="text-sm leading-snug font-semibold text-foreground">
-                    {i.name}
-                    {i.variant && <span className="ml-1.5 font-normal text-muted-foreground">({i.variant})</span>}
-                  </p>
-                  {i.note && (
-                    <p className="mt-1 rounded-lg border-l-4 border-amber-500 bg-amber-500/15 px-2.5 py-1.5 text-[13px] leading-snug font-semibold text-amber-900">
-                      <span className="mr-1.5 text-[10px] font-bold tracking-wider uppercase opacity-70">Note</span>
-                      {i.note}
+            items.map((i) => {
+              const done = !!i.prepared_at;
+              const body = (
+                <>
+                  <span className={`min-w-8 font-serif text-xl leading-none font-bold ${st.qty}`}>{i.qty}×</span>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-sm leading-snug font-semibold text-foreground ${checklist && done ? "line-through" : ""}`}>
+                      {i.name}
+                      {i.variant && <span className="ml-1.5 font-normal text-muted-foreground">({i.variant})</span>}
                     </p>
-                  )}
-                </div>
-              </li>
-            ))
+                    {i.note && (
+                      <p className="mt-1 rounded-lg border-l-4 border-amber-500 bg-amber-500/15 px-2.5 py-1.5 text-[13px] leading-snug font-semibold text-amber-900">
+                        <span className="mr-1.5 text-[10px] font-bold tracking-wider uppercase opacity-70">Note</span>
+                        {i.note}
+                      </p>
+                    )}
+                  </div>
+                </>
+              );
+              if (!checklist) {
+                return (
+                  <li key={i.id} className="flex items-baseline gap-2">
+                    {body}
+                  </li>
+                );
+              }
+              return (
+                <li key={i.id}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={done}
+                    aria-label={`${i.name}: ${done ? "made" : "not made yet"}`}
+                    onClick={() => onToggleItem(i.id, !done)}
+                    className={`adm-no-lift flex min-h-14 w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
+                      done ? "border-emerald-500/40 bg-emerald-500/10" : "border-border bg-background hover:border-[#d39c54]"
+                    }`}
+                  >
+                    <div className={`flex min-w-0 flex-1 items-baseline gap-2 ${done ? "opacity-60" : ""}`}>{body}</div>
+                    {/* The switch sits on the right: slide to green when the item is made */}
+                    <span
+                      aria-hidden="true"
+                      className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors duration-200 ${
+                        done ? "bg-emerald-500" : "bg-neutral-300"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-1 left-1 flex h-6 w-6 items-center justify-center rounded-full bg-white shadow transition-transform duration-200 ${
+                          done ? "translate-x-6" : "translate-x-0"
+                        }`}
+                      >
+                        {done && <Check className="h-3.5 w-3.5 text-emerald-600" />}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })
           )}
         </ul>
 
@@ -459,15 +528,31 @@ function Ticket({
           </button>
         </div>
 
+        {waitingOnItems && (
+          <button
+            type="button"
+            onClick={onMarkAll}
+            className="adm-no-lift mt-3 text-xs font-semibold text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            Everything is already made — tick all items
+          </button>
+        )}
+
         <div className="mt-3 flex items-center gap-2">
           {next ? (
             <button
               onClick={() => onMove(next)}
-              disabled={busy}
+              disabled={busy || waitingOnItems}
               className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold shadow-sm transition-colors disabled:opacity-60 ${st.action}`}
             >
-              {status === "new" ? "Start preparing" : "Mark ready"}
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              {status === "new"
+                ? "Start preparing"
+                : waitingOnItems
+                  ? `${progress.done} of ${progress.total} items done`
+                  : checklist
+                    ? "Food ready"
+                    : "Mark ready"}
+              {!waitingOnItems && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
             </button>
           ) : (
             <div

@@ -109,6 +109,8 @@ export type OrderItem = {
   unit_price: number;
   qty: number;
   note: string | null;
+  /** When the kitchen ticked this item off as prepared (empty = not done yet). Needs migration 015. */
+  prepared_at?: string | null;
   created_at: string;
 };
 

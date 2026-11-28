@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
@@ -15,12 +15,23 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Truck,
+  UserCog,
 } from "lucide-react";
-import { useAuth, signOut } from "../../lib/auth";
+import { useAuth, signOut, refreshStaffRoles } from "../../lib/auth";
+import {
+  canAccess,
+  roleSummary,
+  wantsAdminNotifications,
+  wantsNewOrderAlert,
+  wantsReadyOrderAlert,
+  type AdminSection,
+} from "../../lib/roles";
 import { supabase } from "../../lib/supabase";
 import { SETTINGS_CACHE_KEY, cacheSet } from "../../lib/adminCache";
 import { unwrapSetting, isStoreClosed, DEFAULT_STORE_SETTINGS } from "../../lib/settings";
 import { AdminGuard } from "./AdminGuard";
+import { ChangePasswordGate } from "./ChangePasswordGate";
 import { NewOrderAlert, OrderSoundToggle } from "./NewOrderAlert";
 import { LowStockWatcher } from "./LowStockAlert";
 import { ReadyOrderWatcher } from "./ReadyOrderAlert";
@@ -30,26 +41,31 @@ import logoText from "../../assets/mithara-logo.png";
 import logoIcon from "../../assets/mithara-icon.png";
 import { useCardSpotlight } from "./useCardSpotlight";
 
-const NAV_GROUPS = [
+const NAV_GROUPS: Array<{
+  title: string;
+  items: Array<{ label: string; href: string; icon: typeof LayoutDashboard; section: AdminSection }>;
+}> = [
   {
     title: "Operations",
     items: [
-      { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
-      { label: "Orders", href: "/admin/orders", icon: ShoppingBag },
-      { label: "Kitchen", href: "/admin/kitchen", icon: ChefHat },
-      { label: "Customers", href: "/admin/customers", icon: Users },
-      { label: "Invoices", href: "/admin/invoices", icon: FileText },
+      { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard, section: "dashboard" },
+      { label: "Orders", href: "/admin/orders", icon: ShoppingBag, section: "orders" },
+      { label: "Kitchen", href: "/admin/kitchen", icon: ChefHat, section: "kitchen" },
+      { label: "Deliveries", href: "/admin/deliveries", icon: Truck, section: "deliveries" },
+      { label: "Customers", href: "/admin/customers", icon: Users, section: "customers" },
+      { label: "Invoices", href: "/admin/invoices", icon: FileText, section: "invoices" },
     ],
   },
   {
     title: "Insights",
-    items: [{ label: "Revenue", href: "/admin/revenue", icon: TrendingUp }],
+    items: [{ label: "Revenue", href: "/admin/revenue", icon: TrendingUp, section: "revenue" }],
   },
   {
     title: "Store",
     items: [
-      { label: "Menu Control", href: "/admin/menu", icon: UtensilsCrossed },
-      { label: "Settings", href: "/admin/settings", icon: Sliders },
+      { label: "Menu Control", href: "/admin/menu", icon: UtensilsCrossed, section: "menu" },
+      { label: "Staff", href: "/admin/staff", icon: UserCog, section: "staff" },
+      { label: "Settings", href: "/admin/settings", icon: Sliders, section: "settings" },
     ],
   },
 ];
@@ -57,7 +73,15 @@ const NAV_GROUPS = [
 const ALL_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, roles, isOwner, displayName } = useAuth();
+  // Only the pages this person's roles allow.
+  const navGroups = useMemo(
+    () =>
+      NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => canAccess(roles, i.section)) })).filter(
+        (g) => g.items.length > 0,
+      ),
+    [roles],
+  );
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
   // The page on screen (changes only when the new page is ready), used to replay the entrance animation once.
   const shownPath = useRouterState({ select: (s) => (s.resolvedLocation ?? s.location).pathname });
@@ -107,13 +131,17 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   useCardSpotlight();
 
   useEffect(() => {
-    const fetchQuickStats = async () => {
+    // The number on the Orders menu item: orders received and not yet handed over.
+    const fetchCount = async () => {
       const { count } = await supabase
         .from("orders")
         .select("*", { count: "exact", head: true })
         .eq("status", "new");
       if (count !== null) setNewOrdersCount(count);
+    };
 
+    const fetchQuickStats = async () => {
+      await fetchCount();
       await fetchHoliday();
     };
 
@@ -148,12 +176,50 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     const onSaved = () => void fetchHoliday();
     window.addEventListener("mithara:settings-saved", onSaved);
 
+    // Keep the Orders number live: any order being added, handed over, cancelled or deleted (here, on another
+    // screen, or straight in the database) re-counts after a moment. The 30 s refresh above is only a backup.
+    let countTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleCount = () => {
+      if (countTimer) clearTimeout(countTimer);
+      countTimer = setTimeout(() => void fetchCount(), 300);
+    };
+    let ordersChannel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      ordersChannel = supabase
+        .channel(`admin-nav-orders-${Math.random().toString(36).slice(2)}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, scheduleCount)
+        .subscribe();
+    } catch {
+      /* the 30 s refresh still keeps it current */
+    }
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void fetchCount();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
+      if (countTimer) clearTimeout(countTimer);
+      if (ordersChannel) supabase.removeChannel(ordersChannel);
+      document.removeEventListener("visibilitychange", onVisible);
       clearInterval(interval);
       window.removeEventListener("mithara:settings-saved", onSaved);
       if (channel) supabase.removeChannel(channel);
     };
   }, []);
+
+  // A role change or "disable" by the Owner applies within a couple of minutes (the database enforces it at once).
+  useEffect(() => {
+    if (isOwner) return;
+    const id = window.setInterval(() => void refreshStaffRoles(), 120_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshStaffRoles();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [isOwner]);
 
   const handleSignOut = async () => {
     try {
@@ -168,18 +234,16 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
   const currentItem = ALL_ITEMS.find(
     (i) => currentPath === i.href || currentPath.startsWith(i.href + "/")
   );
-  const initial = (user?.email?.[0] ?? "A").toUpperCase();
+  const shownName = displayName || user?.email || "Administrator";
+  const initial = (shownName[0] ?? "A").toUpperCase();
 
-  const StorePill = (
-    <Link
-      to="/admin/settings"
-      title="Change in Settings"
-      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium whitespace-nowrap transition-colors sm:gap-2 sm:px-3 sm:text-xs ${
+  const pillClass = `inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-medium whitespace-nowrap transition-colors sm:gap-2 sm:px-3 sm:text-xs ${
         holidayMode
           ? "border-rose-500/25 bg-rose-500/10 text-rose-400 hover:bg-rose-500/15"
           : "border-emerald-500/25 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/15"
-      }`}
-    >
+      }`;
+  const pillInner = (
+    <>
       <span className="relative flex h-2 w-2">
         {!holidayMode && (
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500/60" />
@@ -191,7 +255,17 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         />
       </span>
       {holidayMode ? "Store closed" : "Store live"}
+    </>
+  );
+  // Only the Owner can change the store's open/closed state (in Settings); everyone else just sees it.
+  const StorePill = isOwner ? (
+    <Link to="/admin/settings" title="Change in Settings" className={pillClass}>
+      {pillInner}
     </Link>
+  ) : (
+    <span className={pillClass} title="Store status">
+      {pillInner}
+    </span>
   );
 
   return (
@@ -210,7 +284,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             <img src={logoText} alt="Mithara" className="h-3.5 w-auto min-w-0 object-contain" />
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <NotificationBell tone="dark" />
+            {wantsAdminNotifications(roles) && <NotificationBell tone="dark" />}
             <OrderSoundToggle tone="dark" />
             {StorePill}
           </div>
@@ -260,7 +334,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
           {/* Nav */}
           <nav className="relative flex-1 space-y-6 overflow-x-hidden overflow-y-auto px-3 py-4">
-            {NAV_GROUPS.map((group) => (
+            {navGroups.map((group) => (
               <div key={group.title}>
                 <p
                   className={`mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/40 ${
@@ -329,9 +403,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               </div>
               <div className={`min-w-0 flex-1 ${c ? "lg:hidden" : ""}`}>
                 <p className="truncate text-xs font-semibold text-white">
-                  {user?.email ?? "Administrator"}
+                  {shownName}
                 </p>
-                <p className="text-[10px] uppercase tracking-wider text-[#ebb976]/80">Super admin</p>
+                <p className="text-[10px] uppercase tracking-wider text-[#ebb976]/80">{roleSummary(roles)}</p>
               </div>
               <button
                 onClick={handleSignOut}
@@ -363,7 +437,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <NotificationBell />
+              {wantsAdminNotifications(roles) && <NotificationBell />}
               <OrderSoundToggle />
               {StorePill}
               <Link
@@ -383,10 +457,11 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             </div>
           </main>
         </div>
-        <NewOrderAlert />
-        <LowStockWatcher />
-        <ReadyOrderWatcher />
-        <NotificationsWatcher />
+        {wantsNewOrderAlert(roles) && <NewOrderAlert />}
+        {wantsAdminNotifications(roles) && <LowStockWatcher />}
+        {wantsReadyOrderAlert(roles) && <ReadyOrderWatcher />}
+        {wantsAdminNotifications(roles) && <NotificationsWatcher />}
+        <ChangePasswordGate />
       </div>
     </AdminGuard>
   );

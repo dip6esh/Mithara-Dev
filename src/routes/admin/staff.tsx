@@ -414,7 +414,7 @@ function AddStaffModal({ onClose, onDone, onNeedsKey }: { onClose: () => void; o
 
   if (created) {
     return (
-      <ModalCard title={`${created.name} is ready`} subtitle="Share these details with them. They'll choose their own password the first time they sign in." onClose={onClose}>
+      <ModalCard title={`${created.name} is ready`} subtitle="Share these details with them. When they first sign in they'll be offered the chance to choose their own password (they can skip it)." onClose={onClose}>
         <CopyBlock lines={[["Sign in as", created.login], ["Starting password", created.password]]} />
         <p className="mt-3 text-xs text-muted-foreground">
           This password is shown only now. If it gets lost, use “Reset password” on their row.
@@ -531,7 +531,7 @@ function ResetPasswordModal({ person, onClose }: { person: StaffMember; onClose:
 
   if (done) {
     return (
-      <ModalCard title="Password reset" subtitle="They'll choose a new one of their own when they next sign in." onClose={onClose}>
+      <ModalCard title="Password reset" subtitle="When they next sign in they'll be offered the chance to choose their own password (they can skip it)." onClose={onClose}>
         <CopyBlock lines={[["Sign in as", person.login_name], ["Starting password", done]]} />
         <button onClick={onClose} className="mt-5 h-11 w-full rounded-xl bg-[#282345] text-sm font-semibold text-white hover:bg-[#1c1733]">
           Done

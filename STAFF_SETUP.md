@@ -38,7 +38,7 @@ rules itself, so a page can't be reached by typing its address.
    cancel / undo buttons.
 4. Add a **Delivery** person → Deliveries lists delivery orders only; "Cash received" hands one over.
 5. On the Staff page: edit a role, reset a password, switch access off (they are blocked at once).
-6. First sign-in of a new person asks them to choose their own password.
+6. First sign-in of a new person offers them the chance to choose their own password (they can tap "Skip for now").
 
 ## Good to know
 

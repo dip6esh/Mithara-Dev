@@ -6,9 +6,20 @@ import { useAuth } from "../../lib/auth";
 
 /**
  * First sign-in for a new staff member (or after the Owner resets their password): the Owner set a
- * starting password and shared it, so the person is asked to choose their own before carrying on.
- * The Owner never needs to know it afterwards. Shown on top of whatever page is open.
+ * starting password and shared it, so the person is offered the chance to choose their own.
+ * It is optional: "Skip for now" lets them carry on straight away. If skipped, it is offered again the
+ * next time they sign in (not on every page), until they set their own password.
+ * Shown on top of whatever page is open.
  */
+const skipKey = (userId: string) => `mithara-skip-password-${userId}`;
+const wasSkipped = (userId: string) => {
+  try {
+    return window.sessionStorage.getItem(skipKey(userId)) === "1";
+  } catch {
+    return false;
+  }
+};
+
 export function ChangePasswordGate() {
   const { user, isOwner } = useAuth();
   const [pw, setPw] = useState("");
@@ -16,9 +27,20 @@ export function ChangePasswordGate() {
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [skipped, setSkipped] = useState(() => (user ? wasSkipped(user.id) : false));
 
-  const mustChange = !!user && !isOwner && user.user_metadata?.must_change_password === true && !done;
+  const mustChange =
+    !!user && !isOwner && user.user_metadata?.must_change_password === true && !done && !skipped && !wasSkipped(user.id);
   if (!mustChange) return null;
+
+  const skip = () => {
+    try {
+      window.sessionStorage.setItem(skipKey(user!.id), "1");
+    } catch {
+      /* the choice just lasts until the next page load */
+    }
+    setSkipped(true);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +62,7 @@ export function ChangePasswordGate() {
         </div>
         <h2 className="mt-4 font-serif text-2xl font-semibold text-[#1c1733]">Choose your own password</h2>
         <p className="mt-1.5 text-sm text-[#6b6488]">
-          You signed in with a starting password. Pick one only you know — you'll use it from now on.
+          You signed in with a starting password. You can pick one only you know now, or do it later.
         </p>
         <label className="mt-5 block text-xs font-semibold text-[#4a4370]">New password</label>
         <div className="relative mt-1.5">
@@ -74,6 +96,14 @@ export function ChangePasswordGate() {
           className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#282345] text-sm font-semibold text-white transition hover:bg-[#1c1733] disabled:opacity-60"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save password"}
+        </button>
+        <button
+          type="button"
+          onClick={skip}
+          disabled={busy}
+          className="mt-2 h-11 w-full rounded-xl text-sm font-semibold text-[#6b6488] transition hover:bg-[#f1eff8] hover:text-[#282345] disabled:opacity-60"
+        >
+          Skip for now
         </button>
       </form>
     </div>

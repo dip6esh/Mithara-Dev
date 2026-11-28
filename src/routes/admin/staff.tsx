@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Check, Copy, Eye, EyeOff, KeyRound, Loader2, Pencil, Plus, ShieldCheck, Trash2, UserX, UserCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
+import { STAFF_LIST_CACHE_KEY, STAFF_SETUP_CACHE_KEY, hasCache, useCachedState } from "../../lib/adminCache";
 import { ROLE_INFO, STAFF_ROLES, isValidEmail, isValidUsername, type StaffRole } from "../../lib/roles";
 import { StaffApiError, generatePassword, staffApi, type StaffMember } from "../../lib/staffApi";
 import { ModalBackdrop } from "../../components/ModalBackdrop";
@@ -17,10 +18,11 @@ const inputCls =
   "h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:border-[#d39c54] focus:outline-none focus:ring-4 focus:ring-[#d39c54]/20";
 
 function StaffPage() {
-  const [staff, setStaff] = useState<StaffMember[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Shown instantly from the last visit (or the sign-in warm-up) while a quiet refresh brings it up to date.
+  const [staff, setStaff] = useCachedState<StaffMember[]>(STAFF_LIST_CACHE_KEY, []);
+  const [loading, setLoading] = useState(() => !hasCache(STAFF_LIST_CACHE_KEY));
   const [notMigrated, setNotMigrated] = useState(false);
-  const [needsKey, setNeedsKey] = useState(false);
+  const [needsKey, setNeedsKey] = useCachedState<boolean>(STAFF_SETUP_CACHE_KEY, false);
 
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<StaffMember | null>(null);
@@ -38,7 +40,7 @@ function StaffPage() {
       setStaff((data as StaffMember[]) ?? []);
     }
     setLoading(false);
-  }, []);
+  }, [setStaff]);
 
   useEffect(() => {
     void load();
@@ -46,7 +48,7 @@ function StaffPage() {
     staffApi<{ configured: boolean }>("status")
       .then((r) => setNeedsKey(!r.configured))
       .catch(() => undefined);
-  }, [load]);
+  }, [load, setNeedsKey]);
 
   const runConfirm = async () => {
     if (!confirm) return;

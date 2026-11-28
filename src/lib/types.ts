@@ -111,6 +111,8 @@ export type OrderItem = {
   note: string | null;
   /** When the kitchen ticked this item off as prepared (empty = not done yet). Needs migration 015. */
   prepared_at?: string | null;
+  /** Fixed position within the order (migration 016): items are shown in this order. */
+  seq?: number | null;
   created_at: string;
 };
 

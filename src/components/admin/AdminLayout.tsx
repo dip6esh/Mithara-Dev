@@ -19,6 +19,7 @@ import {
   UserCog,
 } from "lucide-react";
 import { useAuth, signOut, refreshStaffRoles } from "../../lib/auth";
+import { prefetchForRoles } from "../../lib/prefetch";
 import {
   canAccess,
   roleSummary,
@@ -206,6 +207,12 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       if (channel) supabase.removeChannel(channel);
     };
   }, []);
+
+  // Warm the pages this person can open so even their first visit shows data immediately.
+  const roleKey = roles.join(",");
+  useEffect(() => {
+    if (roleKey) void prefetchForRoles(roleKey.split(",") as typeof roles);
+  }, [roleKey]);
 
   // A role change or "disable" by the Owner applies within a couple of minutes (the database enforces it at once).
   useEffect(() => {

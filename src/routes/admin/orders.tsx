@@ -35,6 +35,7 @@ import { OrderProgress } from "../../components/admin/OrderProgress";
 import { describeAction, type PendingAction } from "../../lib/orderActions";
 import { useAuth } from "../../lib/auth";
 import { canReverseOrders } from "../../lib/roles";
+import { withSortedItems } from "../../lib/orderItems";
 
 /** The note a customer typed at checkout. Manual orders keep their item text in `notes`, so ignore a note that just repeats an item. */
 function customerNote(o: Order): string | null {
@@ -134,7 +135,7 @@ function AdminOrdersPage() {
       const rows = data || [];
       setHasMore(rows.length > limitRef.current);
       const page = rows.slice(0, limitRef.current);
-      setOrders(page);
+      setOrders(withSortedItems(page));
       const paidIds = page.filter((o) => o.payment_status === "paid" && o.status !== "cancelled").map((o) => o.id);
       fetchInvoiceMap(paidIds).then(async (map) => {
         setInvoiceMap(map);
@@ -188,7 +189,7 @@ function AdminOrdersPage() {
         .or(`order_number.ilike.%${q}%,customer_name.ilike.%${q}%,customer_phone.ilike.%${q}%`)
         .order("created_at", { ascending: false })
         .limit(200);
-      if (!cancelled && !error) setSearchExtra(data || []);
+      if (!cancelled && !error) setSearchExtra(withSortedItems(data || []));
     }, 350);
     return () => {
       cancelled = true;

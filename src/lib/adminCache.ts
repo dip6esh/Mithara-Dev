@@ -10,6 +10,9 @@ import { useCallback, useState } from "react";
 
 /** Shared keys: one screen can warm another's cache so it opens instantly the first time too. */
 export const SETTINGS_CACHE_KEY = "admin:settings:rows";
+export const DELIVERIES_CACHE_KEY = "admin:deliveries:orders";
+export const STAFF_LIST_CACHE_KEY = "admin:staff:list";
+export const STAFF_SETUP_CACHE_KEY = "admin:staff:needs-key";
 
 const store = new Map<string, unknown>();
 

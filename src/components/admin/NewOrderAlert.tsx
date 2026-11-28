@@ -1,3 +1,4 @@
+import { withSortedItems } from "../../lib/orderItems";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Bell, BellOff, BellRing, Phone, MapPin, ShoppingBag, Volume2, X } from "lucide-react";
@@ -81,7 +82,7 @@ async function checkForNewOrders() {
     .order("created_at", { ascending: false })
     .limit(QUEUE_LIMIT);
   if (error || !data) return;
-  const fetched = data as Order[];
+  const fetched = withSortedItems(data as Order[]);
   // This check already loads every open order with its items: hand it to the Kitchen board so it opens instantly.
   cacheSet(KITCHEN_CACHE_KEY, [...fetched].reverse());
   const rows = fetched.filter((o) => !alreadyHandled(o));

@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import { useCachedState, hasCache } from "../lib/adminCache";
 import { KITCHEN_CACHE_KEY, isMissingItemColumn, isMissingKitchenColumn, kitchenStatusOf } from "../lib/kitchen";
 import { markOrdersSeenForTeam } from "../lib/seenOrders";
+import { sortOrderItems } from "../lib/orderItems";
 import type { KitchenStatus, Order, OrderItem } from "../lib/types";
 
 const CACHE_KEY = KITCHEN_CACHE_KEY;
@@ -32,6 +33,27 @@ export function useKitchenOrders() {
   const guardRef = useRef(new Map<string, { value: string | null; until: number | null }>());
   const writesRef = useRef(new Map<string, { desired: string | null; confirmed: string | null; writing: boolean }>());
 
+  /**
+   * Keeps an order's items in one fixed order. With migration 016 that is each item's position number. Without
+   * it, the order the board first saw is remembered and kept, so ticking an item never moves it.
+   */
+  const itemOrderRef = useRef(new Map<string, string[]>());
+  const stabilize = useCallback((o: Order): Order => {
+    const items = o.order_items;
+    if (!items || items.length < 2) return o;
+    if (items.every((i) => typeof i.seq === "number")) return { ...o, order_items: sortOrderItems(items) };
+    const known = itemOrderRef.current.get(o.id);
+    if (!known) {
+      itemOrderRef.current.set(o.id, items.map((i) => i.id));
+      return o;
+    }
+    const seen = new Set(known);
+    const next = [...known, ...items.filter((i) => !seen.has(i.id)).map((i) => i.id)];
+    if (next.length !== known.length) itemOrderRef.current.set(o.id, next);
+    const rank = new Map(next.map((id, idx) => [id, idx]));
+    return { ...o, order_items: [...items].sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0)) };
+  }, []);
+
   const reconcile = useCallback((list: Order[]): Order[] => {
     const g = guardRef.current;
     if (g.size === 0) return list;
@@ -58,11 +80,11 @@ export function useKitchenOrders() {
         console.error("Kitchen load error:", error);
         if (!silent) toast.error("Could not load kitchen orders");
       } else {
-        setOrders(reconcile((data as Order[]) ?? []));
+        setOrders(reconcile((data as Order[]) ?? []).map(stabilize));
       }
       setLoading(false);
     },
-    [setOrders, reconcile],
+    [setOrders, reconcile, stabilize],
   );
 
   /** One order, with its items: used when realtime reports an order we do not have yet. */
@@ -75,7 +97,7 @@ export function useKitchenOrders() {
         .eq("status", "new")
         .maybeSingle();
       if (!data) return;
-      const row = reconcile([data as Order])[0];
+      const row = stabilize(reconcile([data as Order])[0]);
       setOrders((prev) =>
         prev.some((o) => o.id === row.id)
           ? prev.map((o) => (o.id === row.id ? row : o))
@@ -86,7 +108,7 @@ export function useKitchenOrders() {
         setTimeout(() => void loadOne(id, false), 2000);
       }
     },
-    [setOrders, reconcile],
+    [setOrders, reconcile, stabilize],
   );
 
   useEffect(() => {
@@ -126,12 +148,12 @@ export function useKitchenOrders() {
             prev.map((o) => {
               if (o.id !== row.order_id) return o;
               const items = o.order_items ?? [];
-              return {
+              return stabilize({
                 ...o,
                 order_items: items.some((i) => i.id === row.id)
                   ? items.map((i) => (i.id === row.id ? { ...i, ...row } : i))
                   : [...items, row],
-              };
+              });
             }),
           );
         })
@@ -151,7 +173,7 @@ export function useKitchenOrders() {
       document.removeEventListener("visibilitychange", onVisible);
       if (channel) supabase.removeChannel(channel);
     };
-  }, [load, loadOne, setOrders]);
+  }, [load, loadOne, setOrders, stabilize]);
 
   /** Move a ticket to a new kitchen step. Instant on screen; rolls back if it could not be saved. */
   const setStatus = useCallback(

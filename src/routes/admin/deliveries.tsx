@@ -3,12 +3,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, ChefHat, Clock, MapPin, Phone, RefreshCw, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../../lib/supabase";
+import { DELIVERIES_CACHE_KEY, hasCache, useCachedState } from "../../lib/adminCache";
 import { useOrdersRealtime } from "../../hooks/useAdminOrders";
 import { formatINR } from "../../lib/enquiry";
 import { PAID_VIA_LABEL } from "../../lib/orderFlow";
 import { describeAction, type PendingAction } from "../../lib/orderActions";
 import { formatAge, minutesSince } from "../../lib/kitchen";
 import { ConfirmDialog } from "../../components/admin/ConfirmDialog";
+import { withSortedItems } from "../../lib/orderItems";
 import type { Order, PaidVia } from "../../lib/types";
 
 export const Route = createFileRoute("/admin/deliveries")({
@@ -26,8 +28,9 @@ function addressLines(o: Order): string[] {
 }
 
 function DeliveriesPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Shown instantly from the last visit (or the sign-in warm-up) while a quiet refresh brings it up to date.
+  const [orders, setOrders] = useCachedState<Order[]>(DELIVERIES_CACHE_KEY, []);
+  const [loading, setLoading] = useState(() => !hasCache(DELIVERIES_CACHE_KEY));
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -45,13 +48,13 @@ function DeliveriesPage() {
       console.error("Deliveries load error:", error);
       if (!silent) toast.error("Could not load deliveries");
     } else {
-      setOrders((data as Order[]) ?? []);
+      setOrders(withSortedItems((data as Order[]) ?? []));
     }
     setLoading(false);
-  }, []);
+  }, [setOrders]);
 
   useEffect(() => {
-    void load(false);
+    void load(hasCache(DELIVERIES_CACHE_KEY));
   }, [load]);
   useOrdersRealtime(() => void load(true));
   useEffect(() => {
